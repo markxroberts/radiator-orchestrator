@@ -1,0 +1,12 @@
+DOMAIN = "radiator_orchestrator"
+CONF_ROOMS = "rooms"
+CONF_HEAT_SWITCH = "heat_switch"
+CONF_HOT_WATER_SWITCH = "hot_water_switch"
+CONF_MIN_ON = "min_on_seconds"
+CONF_MIN_OFF = "min_off_seconds"
+CONF_FROST = "frost_temperature"
+CONF_INTERVAL = "update_seconds"
+DEFAULT_MIN_ON = 300
+DEFAULT_MIN_OFF = 300
+DEFAULT_FROST = 8.0
+DEFAULT_INTERVAL = 60

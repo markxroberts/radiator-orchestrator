@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+*.egg-info/
+# macOS
+.DS_Store
+._*
+__MACOSX/
+# Editors
+.vscode/
+.idea/
+# HA local runtime data
+.storage/
+secrets.yaml
