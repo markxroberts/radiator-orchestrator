@@ -6,6 +6,7 @@ from homeassistant.const import Platform
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
 from .const import DOMAIN, CONF_ROOMS, CONF_HEAT_SWITCH, CONF_HOT_WATER_SWITCH
 from .controller import HeatingController
+from .ems_monitor import EMS_ENABLED, EMS_FIELDS
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.CLIMATE, Platform.SWITCH, Platform.NUMBER, Platform.BINARY_SENSOR, Platform.SENSOR]
@@ -26,6 +27,8 @@ async def async_setup_entry(hass, entry):
         if settings.get(key):
             watch.add(settings[key])
     watch.update(settings.get("people") or [])
+    if settings.get(EMS_ENABLED):
+        watch.update(settings[key] for key in EMS_FIELDS if settings.get(key))
     if settings.get(CONF_HEAT_SWITCH):
         watch.add(settings[CONF_HEAT_SWITCH])
     if settings.get(CONF_HOT_WATER_SWITCH):

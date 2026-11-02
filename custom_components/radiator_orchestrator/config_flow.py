@@ -109,6 +109,17 @@ def presence_schema(existing=None):
     return vol.Schema(schema)
 
 
+
+def ems_schema(existing=None):
+    """Select actual EMS-ESP HA entities; never infer writable capabilities."""
+    from .ems_monitor import EMS_ENABLED, EMS_FIELDS
+    old = existing or {}
+    entity = selector.EntitySelector(selector.EntitySelectorConfig(domain=["sensor", "binary_sensor", "switch"]))
+    schema = {vol.Required(EMS_ENABLED, default=old.get(EMS_ENABLED, False)): bool}
+    for field in EMS_FIELDS:
+        schema[vol.Optional(field, description={"suggested_value": old.get(field)})] = entity
+    return vol.Schema(schema)
+
 class RadiatorOrchestratorFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
     async def async_step_user(self, user_input=None):
@@ -140,6 +151,7 @@ class RadiatorOptionsFlow(config_entries.OptionsFlow):
                 "linked_bathroom": "Link bathrooms to bedrooms",
                 "morning_room": "Morning preheating by room",
                 "holiday_guest_bedrooms": "Holiday return: guest bedrooms",
+                "ems": "EMS-ESP monitoring (read-only)",
             },
         )
 
@@ -350,3 +362,13 @@ class RadiatorOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             return self._save(user_input)
         return self.async_show_form(step_id="presence", data_schema=presence_schema(self._settings))
+
+    async def async_step_ems(self, user_input=None):
+        from .ems_monitor import EMS_FIELDS
+        if user_input is not None:
+            # Empty fields explicitly clear old mappings, instead of persisting
+            # previously selected sensors through the options merge.
+            changes = {field: user_input.get(field) for field in EMS_FIELDS}
+            changes["ems_monitor_enabled"] = user_input.get("ems_monitor_enabled", False)
+            return self._save(changes)
+        return self.async_show_form(step_id="ems", data_schema=ems_schema(self._settings))

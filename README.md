@@ -1,3 +1,27 @@
+# HeatFlow v0.7.5 — optional EMS-ESP monitoring (read-only)
+
+HeatFlow can now observe the existing **EMS-ESP entities in Home Assistant** without altering how the boiler is controlled. The feature defaults to **off**, does not install or configure EMS-ESP, and never sends EMS commands or changes the CH/DHW relay logic.
+
+### Setup
+
+1. In **Settings → Devices & services → HeatFlow → Configure**, open **EMS-ESP monitoring (read-only)**.
+2. Enable EMS monitoring, then select whichever of your existing entities are available. All individual mappings are optional. For your Greenstar Highflow, the most useful initial selections are **Current Flow Temperature**, **Burner Current Power / Modulation**, **Gas**, **Fan**, **Heating Pump**, and **DHW 3-way valve**. Map hot-water temperature if EMS-ESP exposes a reliable numeric value.
+3. Save. HeatFlow reloads the integration and tracks those sources on change and on its minute timer.
+4. In **HeatFlow Controller**, look for **EMS Monitoring Status**, the numeric measurements you mapped, and the boolean EMS diagnostic entities. The **Diagnostic History** sensor records observed status transitions; the recent-events attribute contains the last ten events.
+
+### What it does and does not do
+
+- **Monitors:** actual flow temperature, optional return temperature, selected flow temperature, heating temperature setting, burner modulation, optional DHW temperature, gas/burner state, fan, heating pump, DHW valve, optional dedicated DHW charging state.
+- **Observes burner activity:** session-only approximate burner starts, firing duration and accumulated time; values reset when HeatFlow is reloaded. The timing resolution is limited by incoming EMS-ESP entity updates and the controller's periodic evaluation.
+- **Separates DHW valve position from charging:** a 3-way valve indicating DHW is **not** definitive evidence that the store is being charged. Only map *DHW charging* when you have a separate suitable source.
+- **Handles unavailable data:** missing, unknown, invalid or out-of-range inputs become unavailable rather than defaulting to off. Partial gateway outages are displayed as **partial** or **sources_unavailable**.
+- **Never writes EMS:** no direct selected-flow, burner, pump, comfort/ECO, one-time charge, or other EMS commands are issued. The existing heating and hot-water switches remain authoritative; a failed EMS gateway cannot alter heating demand.
+- **Logs changes, not raw telemetry:** boolean transitions are written to bounded diagnostic history. Continuous numeric readings can use Home Assistant's Recorder/History; HeatFlow deliberately does not add a diagnostic entry on every temperature update.
+
+This is an experimental custom integration; read-only EMS diagnostics have local unit and isolated-controller tests, not live verification on your Greenstar Highflow.
+
+---
+
 # HeatFlow — Home Assistant heating and hot-water management
 
 **Experimental custom integration, v0.7.4**. The integration domain remains `radiator_orchestrator` for compatibility with existing installations.

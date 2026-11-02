@@ -1,6 +1,8 @@
 """Heating status indicators for dashboards."""
 from .entity import HeatFlowEntity
-from homeassistant.components.sensor import SensorEntity
+import time
+from homeassistant.components.sensor import SensorEntity, SensorStateClass, SensorDeviceClass
+from .ems_monitor import EMS_ENABLED, EMS_NUMERIC
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.util import dt as dt_util
 from .const import DOMAIN
@@ -16,6 +18,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
     entities.append(HotWaterControlReasonSensor(ctrl))
     entities.append(HolidayReturnReasonSensor(ctrl))
     entities.extend(RoomReasonSensor(ctrl, name) for name in ctrl.rooms)
+    entities.append(EMSStatusSensor(ctrl))
+    if ctrl.ems.enabled:
+        entities.extend(EMSNumericSensor(ctrl, key) for key in EMS_NUMERIC if key in ctrl.ems.sources)
     async_add_entities(entities)
 
 class StatusSensor(HeatFlowEntity, SensorEntity):
@@ -250,3 +255,67 @@ class HolidayReturnReasonSensor(HeatFlowEntity, SensorEntity):
                 n for n, r in self.ctrl.rooms.items() if r.demand and r.effective_primary
             ],
         }
+
+class EMSStatusSensor(HeatFlowEntity, SensorEntity):
+    """EMS availability, source mappings and observed values (diagnostic only)."""
+    _attr_should_poll = False
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:heating-coil"
+
+    def __init__(self, ctrl):
+        self.ctrl = ctrl
+        self._attr_name = "EMS Monitoring Status"
+        self._attr_unique_id = f"{ctrl.entry.entry_id}_ems_monitor_status"
+
+    async def async_added_to_hass(self):
+        self.async_on_remove(self.ctrl.subscribe(self.async_write_ha_state))
+
+    @property
+    def native_value(self):
+        return self.ctrl.ems.status
+
+    @property
+    def extra_state_attributes(self):
+        monitor = self.ctrl.ems
+        return {
+            "mode": "read_only",
+            "configured_sources": dict(monitor.sources),
+            "current_values": dict(monitor.values),
+            "burner_starts_observed": monitor.burner_starts,
+            "burner_runtime_observed_seconds": monitor.runtime_seconds(time.monotonic()),
+            "last_burner_duration_seconds": monitor.last_burner_duration_seconds,
+            "notes": "DHW valve selection is not proof of active DHW charging",
+        }
+
+
+class EMSNumericSensor(HeatFlowEntity, SensorEntity):
+    """Optional mirror of a selected EMS-ESP sensor; no polling or writes."""
+    _attr_should_poll = False
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, ctrl, key):
+        self.ctrl, self.key = ctrl, key
+        label, unit, icon, _, _ = EMS_NUMERIC[key]
+        self._attr_name = f"EMS {label}"
+        self._attr_unique_id = f"{ctrl.entry.entry_id}_{key}"
+        self._attr_native_unit_of_measurement = unit
+        self._attr_icon = icon
+        if unit == "°C":
+            self._attr_device_class = SensorDeviceClass.TEMPERATURE
+
+    async def async_added_to_hass(self):
+        self.async_on_remove(self.ctrl.subscribe(self.async_write_ha_state))
+
+    @property
+    def native_value(self):
+        return self.ctrl.ems.values.get(self.key)
+
+    @property
+    def available(self):
+        return self.native_value is not None
+
+    @property
+    def extra_state_attributes(self):
+        return {"source_entity": self.ctrl.ems.sources.get(self.key),
+                "ems_monitoring_mode": "read_only"}

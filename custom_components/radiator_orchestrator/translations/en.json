@@ -27,7 +27,8 @@
           "linked_bathroom": "Link bathrooms to bedrooms",
           "add_hot_water_room": "Add hot-water-only room",
           "morning_room": "Morning preheating by room",
-          "holiday_guest_bedrooms": "Holiday return: guest bedrooms"
+          "holiday_guest_bedrooms": "Holiday return: guest bedrooms",
+          "ems": "EMS-ESP monitoring (read-only)"
         }
       },
       "add_room": {
@@ -192,6 +193,24 @@
         "description": "Normal rooms preheat whether occupied or not. Select ONLY guest bedrooms which should preheat on holiday return if their own occupancy helper is ON. A linked bathroom remains at setback if it is linked exclusively to unoccupied guest bedrooms. Use an input_boolean to indicate a guest room is in use; PIR motion sensors may not detect sleeping guests.",
         "data": {
           "holiday_guest_bedrooms": "Guest bedrooms requiring occupancy for return preheat"
+        }
+      },
+      "ems": {
+        "title": "EMS-ESP monitoring (read-only)",
+        "description": "Select only existing EMS-ESP entities. HeatFlow reads their states for diagnostics and history; it never sends EMS commands. All selections are optional.",
+        "data": {
+          "ems_monitor_enabled": "Enable EMS monitoring",
+          "ems_flow_temperature": "Current flow temperature (optional)",
+          "ems_return_temperature": "Return temperature (optional)",
+          "ems_selected_flow_temperature": "Selected flow temperature (optional)",
+          "ems_heating_temperature": "Heating temperature setting (optional)",
+          "ems_burner_power": "Burner current power / modulation (optional)",
+          "ems_dhw_temperature": "DHW temperature (optional)",
+          "ems_gas": "Gas / burner firing status (optional)",
+          "ems_fan": "Fan running status (optional)",
+          "ems_heating_pump": "Heating pump running status (optional)",
+          "ems_dhw_valve": "DHW 3-way valve position (optional, not charging proof)",
+          "ems_dhw_charging": "DHW charging status (only if a specific sensor exists)"
         }
       }
     },

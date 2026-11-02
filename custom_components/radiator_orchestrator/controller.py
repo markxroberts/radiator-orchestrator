@@ -13,6 +13,7 @@ from homeassistant.helpers.storage import Store
 from .const import *
 from .pid import PID, clamp
 from .dhw_logic import OccupancyHotWater
+from .ems_monitor import EMSMonitor
 from .linked_heating import morning_window, preheat_allowance, preheat_authorisation
 
 _LOGGER = logging.getLogger(__name__)
@@ -64,6 +65,7 @@ class HeatingController:
         self.hass = hass
         self.entry = entry
         self.settings = settings
+        self.ems = EMSMonitor(settings)
         self.rooms = {x["name"]: Room(x, PID(x["kp"],x["ki"],x["kd"])) for x in settings.get(CONF_ROOMS,[]) if x.get("room_type") != "hot_water_only"}
         self.hot_water_rooms = [x for x in settings.get(CONF_ROOMS, []) if x.get("room_type") == "hot_water_only"]
         self.learning = {}
@@ -918,6 +920,17 @@ class HeatingController:
             else:
                 self.hot_water_relay_on = None
                 self.hot_water_reason = "no_hot_water_switch_configured"
+            # EMS is read-only and never contributes to any heating or DHW
+            # demand. Failures must never interrupt boiler control.
+            try:
+                for transition in self.ems.sample(self.hass.states.get, now):
+                    signal = transition["signal"]
+                    self._history_event(
+                        "ems", f"EMS {signal.removeprefix('ems_')}: {transition['value']}",
+                        details=transition,
+                    )
+            except Exception:
+                _LOGGER.exception("EMS monitoring failed; heating control unaffected")
             self._record_changes()
             await self._save_history_if_due(now)
             self.publish()
