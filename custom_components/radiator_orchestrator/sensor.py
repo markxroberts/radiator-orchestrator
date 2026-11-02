@@ -2,7 +2,7 @@
 from .entity import HeatFlowEntity
 import time
 from homeassistant.components.sensor import SensorEntity, SensorStateClass, SensorDeviceClass
-from .ems_monitor import EMS_ENABLED, EMS_NUMERIC
+from .ems_monitor import EMS_NUMERIC, EMS_TEXT
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.util import dt as dt_util
 from .const import DOMAIN
@@ -21,6 +21,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     entities.append(EMSStatusSensor(ctrl))
     if ctrl.ems.enabled:
         entities.extend(EMSNumericSensor(ctrl, key) for key in EMS_NUMERIC if key in ctrl.ems.sources)
+        entities.extend(EMSTextSensor(ctrl, key) for key in EMS_TEXT if key in ctrl.ems.sources)
     async_add_entities(entities)
 
 class StatusSensor(HeatFlowEntity, SensorEntity):
@@ -281,6 +282,7 @@ class EMSStatusSensor(HeatFlowEntity, SensorEntity):
             "mode": "read_only",
             "configured_sources": dict(monitor.sources),
             "current_values": dict(monitor.values),
+            "raw_source_states": dict(monitor.raw_values),
             "burner_starts_observed": monitor.burner_starts,
             "burner_runtime_observed_seconds": monitor.runtime_seconds(time.monotonic()),
             "last_burner_duration_seconds": monitor.last_burner_duration_seconds,
@@ -319,3 +321,32 @@ class EMSNumericSensor(HeatFlowEntity, SensorEntity):
     def extra_state_attributes(self):
         return {"source_entity": self.ctrl.ems.sources.get(self.key),
                 "ems_monitoring_mode": "read_only"}
+
+class EMSTextSensor(HeatFlowEntity, SensorEntity):
+    """Mirror categorical select/sensor states without assuming boiler control."""
+    _attr_should_poll = False
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, ctrl, key):
+        self.ctrl, self.key = ctrl, key
+        label, icon = EMS_TEXT[key]
+        self._attr_name = f"EMS {label}"
+        self._attr_unique_id = f"{ctrl.entry.entry_id}_{key}"
+        self._attr_icon = icon
+
+    async def async_added_to_hass(self):
+        self.async_on_remove(self.ctrl.subscribe(self.async_write_ha_state))
+
+    @property
+    def native_value(self):
+        return self.ctrl.ems.values.get(self.key)
+
+    @property
+    def available(self):
+        return self.native_value is not None
+
+    @property
+    def extra_state_attributes(self):
+        return {"source_entity": self.ctrl.ems.sources.get(self.key),
+                "ems_monitoring_mode": "read_only",
+                "note": "Reported state only; not a controllable setting"}

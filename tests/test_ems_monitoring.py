@@ -95,3 +95,75 @@ async def test_gateway_unavailable_keeps_room_control_running(house):
     assert ctrl.ems.values["ems_gas"] is None
     assert isinstance(ctrl.boiler_requested, bool)
     assert isinstance(ctrl.hot_water_requested, bool)
+
+def test_number_and_select_domains_available_in_options_flow():
+    from importlib import util
+    spec = util.spec_from_file_location(
+        "ems_monitor_domain_check",
+        Path(__file__).resolve().parents[1] / "custom_components" /
+        "radiator_orchestrator" / "ems_monitor.py",
+    )
+    module = util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert {"number", "select", "input_number", "input_select"}.issubset(
+        set(module.EMS_ENTITY_DOMAINS)
+    )
+    assert {"ems_heating_pump_mode", "ems_dhw_comfort_mode"}.issubset(
+        set(module.EMS_FIELDS)
+    )
+
+
+def test_ems_number_and_numeric_select_states():
+    assert value_from_state("ems_selected_flow_temperature", State("56")) == 56.0
+    assert value_from_state("ems_burner_power", State("37.5")) == 37.5
+    assert value_from_state("ems_selected_flow_temperature", State("Auto")) is None
+
+
+def test_ems_categorical_select_preserves_mode_and_logs_changes():
+    states = {
+        "select.pump_mode": State("prop.high"),
+        "select.dhw_comfort": State("Hot"),
+    }
+    m = EMSMonitor({
+        "ems_monitor_enabled": True,
+        "ems_heating_pump_mode": "select.pump_mode",
+        "ems_dhw_comfort_mode": "select.dhw_comfort",
+    })
+    assert m.sample(states.get, 1.0) == []
+    assert m.status == "monitoring"
+    assert m.values["ems_heating_pump_mode"] == "prop.high"
+    assert m.values["ems_dhw_comfort_mode"] == "Hot"
+    states["select.pump_mode"] = State("prop.low")
+    events = m.sample(states.get, 2.0)
+    assert events == [{
+        "signal": "ems_heating_pump_mode",
+        "previous": "prop.high",
+        "value": "prop.low",
+    }]
+
+
+def test_read_only_select_boolean_is_not_automatically_assumed():
+    assert value_from_state("ems_heating_pump", State("prop.high")) is None
+    assert value_from_state("ems_gas", State("enabled")) is True
+    assert value_from_state("ems_gas", State("disabled")) is False
+
+
+@pytest.mark.asyncio
+async def test_ems_select_sources_never_send_hardware_commands(house):
+    ha, settings, rooms, current, make = house
+    settings.update(
+        ems_monitor_enabled=True,
+        ems_heating_pump_mode="select.pump_mode",
+        ems_selected_flow_temperature="number.selected_flow",
+    )
+    ha.states.set("select.pump_mode", "prop.high")
+    ha.states.set("number.selected_flow", "55")
+    ctrl = make()
+    await ctrl.async_evaluate()
+    assert ctrl.ems.values["ems_heating_pump_mode"] == "prop.high"
+    assert ctrl.ems.values["ems_selected_flow_temperature"] == 55.0
+    actions_before = len(ha.services.actions)
+    ha.states.set("select.pump_mode", "prop.low")
+    ha.states.set("number.selected_flow", "50")
+    await ctrl.async_evaluate()
+    assert len(ha.services.actions) == actions_before

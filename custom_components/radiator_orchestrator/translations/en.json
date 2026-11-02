@@ -197,7 +197,7 @@
       },
       "ems": {
         "title": "EMS-ESP monitoring (read-only)",
-        "description": "Select only existing EMS-ESP entities. HeatFlow reads their states for diagnostics and history; it never sends EMS commands. All selections are optional.",
+        "description": "Select your existing EMS-ESP entities, including sensor, number and select entities. These are read-only observations: HeatFlow never sends EMS commands. Numeric measurements need numeric values; mode entities are reported as text.",
         "data": {
           "ems_monitor_enabled": "Enable EMS monitoring",
           "ems_flow_temperature": "Current flow temperature (optional)",
@@ -210,7 +210,9 @@
           "ems_fan": "Fan running status (optional)",
           "ems_heating_pump": "Heating pump running status (optional)",
           "ems_dhw_valve": "DHW 3-way valve position (optional, not charging proof)",
-          "ems_dhw_charging": "DHW charging status (only if a specific sensor exists)"
+          "ems_dhw_charging": "DHW charging status (only if a specific sensor exists)",
+          "ems_heating_pump_mode": "Heating pump mode (select; reported only, optional)",
+          "ems_dhw_comfort_mode": "DHW Comfort/ECO mode (select; reported only, optional)"
         }
       }
     },

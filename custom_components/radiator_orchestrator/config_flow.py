@@ -112,9 +112,11 @@ def presence_schema(existing=None):
 
 def ems_schema(existing=None):
     """Select actual EMS-ESP HA entities; never infer writable capabilities."""
-    from .ems_monitor import EMS_ENABLED, EMS_FIELDS
+    from .ems_monitor import EMS_ENABLED, EMS_FIELDS, EMS_ENTITY_DOMAINS
     old = existing or {}
-    entity = selector.EntitySelector(selector.EntitySelectorConfig(domain=["sensor", "binary_sensor", "switch"]))
+    entity = selector.EntitySelector(
+        selector.EntitySelectorConfig(domain=list(EMS_ENTITY_DOMAINS))
+    )
     schema = {vol.Required(EMS_ENABLED, default=old.get(EMS_ENABLED, False)): bool}
     for field in EMS_FIELDS:
         schema[vol.Optional(field, description={"suggested_value": old.get(field)})] = entity

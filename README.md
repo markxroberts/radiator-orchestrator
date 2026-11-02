@@ -1,3 +1,18 @@
+# HeatFlow v0.7.6 — EMS number and select entities
+
+EMS monitoring now accepts Home Assistant `sensor`, `binary_sensor`, `switch`, `number`, `select`, `input_number`, `input_select` and `input_boolean` sources. This fixes the EMS configuration dropdowns not showing editable-number and select entities.
+
+- Choose your `number` entities for selected flow temperature and other numeric measurements. **HeatFlow reads their state only; it never adjusts the EMS value.**
+- Choose a `select` entity for a numeric field only if its current state is actually numeric. Otherwise the reading is shown as unavailable, not guessed.
+- Two new optional read-only fields are provided for **Heating pump mode** and **DHW Comfort/ECO mode**. These accept categorical states such as `prop.high`, `prop.low`, `Hot` or `Eco` and show them in separate diagnostic text sensors. Previously observed inconsistencies with the Highflow's physical ECO setting still apply.
+- The **EMS Monitoring Status** sensor includes `raw_source_states` as well as interpreted `current_values`, so unsupported states can be diagnosed without confusing them with valid off/zero readings.
+- Gas, pump-running, fan and DHW status retain strict boolean interpretation. A mode such as `prop.high` **does not** establish that a pump is running.
+- Updating preserves previous EMS mappings, heating-room settings and switch controls. The EMS integration remains **monitor-only**.
+
+After updating through HACS and restarting Home Assistant, open **HeatFlow → Configure → EMS-ESP monitoring (read-only)** and choose your number/select sources. All new fields are optional.
+
+---
+
 # HeatFlow v0.7.5 — optional EMS-ESP monitoring (read-only)
 
 HeatFlow can now observe the existing **EMS-ESP entities in Home Assistant** without altering how the boiler is controlled. The feature defaults to **off**, does not install or configure EMS-ESP, and never sends EMS commands or changes the CH/DHW relay logic.

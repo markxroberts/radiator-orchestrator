@@ -9,6 +9,14 @@ import math
 
 EMS_ENABLED = "ems_monitor_enabled"
 
+# HA entity domains provided by EMS-ESP.  'number' and 'select' entities
+# expose their current states even though the entities themselves are writable.
+# HeatFlow does not invoke any corresponding services.
+EMS_ENTITY_DOMAINS = (
+    "sensor", "binary_sensor", "switch", "number", "select",
+    "input_number", "input_select", "input_boolean",
+)
+
 # Settings keys, types, names, and sensible conservative limits.
 # In particular, a 3-way-valve position is NOT proof of DHW charging.
 EMS_NUMERIC = {
@@ -26,21 +34,30 @@ EMS_BOOLEAN = {
     "ems_dhw_valve": ("DHW 3-way valve selected", "mdi:valve"),
     "ems_dhw_charging": ("DHW charging", "mdi:water-boiler"),
 }
-EMS_FIELDS = (*EMS_NUMERIC, *EMS_BOOLEAN)
+# Expose reported boiler settings without interpreting them as switches.
+# These have proved unreliable as *controls* on the Highflow, but remain
+# useful diagnostics. Values do not necessarily reflect physical ECO mode.
+EMS_TEXT = {
+    "ems_heating_pump_mode": ("Heating pump mode (reported)", "mdi:pump"),
+    "ems_dhw_comfort_mode": ("DHW Comfort/ECO mode (reported)", "mdi:water-cog"),
+}
+EMS_FIELDS = (*EMS_NUMERIC, *EMS_BOOLEAN, *EMS_TEXT)
 
 
-def value_from_state(key: str, state) -> float | bool | None:
-    """Decode an HA entity, returning None rather than guessing unavailable data."""
+def value_from_state(key: str, state) -> float | bool | str | None:
+    """Interpret numbers, switches and categorical selects without guessing."""
     if state is None:
         return None
-    raw = str(getattr(state, "state", "")).strip().lower()
-    if raw in ("", "unknown", "unavailable", "none"):
+    raw = str(getattr(state, "state", "")).strip()
+    normal = raw.lower()
+    if normal in ("", "unknown", "unavailable", "none"):
         return None
     if key in EMS_BOOLEAN:
-        if raw in ("on", "true", "1"):
+        if normal in ("on", "true", "1", "enabled"):
             return True
-        if raw in ("off", "false", "0"):
+        if normal in ("off", "false", "0", "disabled"):
             return False
+        # A mode such as 'prop.high' does not prove that a pump is running.
         return None
     if key in EMS_NUMERIC:
         try:
@@ -50,6 +67,9 @@ def value_from_state(key: str, state) -> float | bool | None:
         _, _, _, minimum, maximum = EMS_NUMERIC[key]
         if math.isfinite(number) and minimum <= number <= maximum:
             return round(number, 2)
+        return None
+    if key in EMS_TEXT:
+        return raw[:128]
     return None
 
 
@@ -60,7 +80,8 @@ class EMSMonitor:
         self.enabled = bool(settings.get(EMS_ENABLED, False))
         self.sources = {key: settings.get(key) for key in EMS_FIELDS
                         if self.enabled and settings.get(key)}
-        self.values: dict[str, float | bool | None] = {}
+        self.values: dict[str, float | bool | str | None] = {}
+        self.raw_values: dict[str, str | None] = {}
         self._observed = False
         self.burner_starts = 0
         self._burner_since: float | None = None
@@ -84,12 +105,19 @@ class EMSMonitor:
         """Return transition records. Do not log every temperature fluctuation."""
         if not self.sources:
             return []
-        new_values = {key: value_from_state(key, state_of(eid))
-                      for key, eid in self.sources.items()}
+        # Sample each source once so raw diagnostics and interpreted values
+        # describe the same observation.
+        states = {key: state_of(eid) for key, eid in self.sources.items()}
+        self.raw_values = {
+            key: str(state.state) if state is not None else None
+            for key, state in states.items()
+        }
+        new_values = {key: value_from_state(key, state)
+                      for key, state in states.items()}
         old_values = self.values
         transitions = []
         if self._observed:
-            for key in EMS_BOOLEAN:
+            for key in (*EMS_BOOLEAN, *EMS_TEXT):
                 if key in new_values and new_values[key] != old_values.get(key):
                     transitions.append({"signal": key,
                                         "previous": old_values.get(key),
