@@ -201,3 +201,13 @@ def test_evening_window_is_not_recurring_morning():
     assert evening_window(23*60+40, 20*60, 30, 150).holding
     assert evening_window(20, 20*60, 30, 150).holding
     assert not evening_window(40, 20*60, 30, 150).holding
+
+@pytest.mark.asyncio
+async def test_ready_time_after_bedtime_does_not_heat_all_night(house):
+    ha, settings, rooms, now, make = evening(house, "2026-11-02 23:20")
+    rooms[0]["evening_ready_time"] = "23:15:00"
+    ctrl = make()
+    await ctrl.async_evaluate()
+    assert ctrl.rooms["bed_a"].evening_preheat_status == "ready_time_not_before_bedtime"
+    assert ctrl.rooms["bed_a"].effective_target == 8
+    assert not ctrl.rooms["bed_a"].demand
