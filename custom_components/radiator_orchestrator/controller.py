@@ -746,8 +746,8 @@ class HeatingController:
         room.evening_preheat_method = method
         # Don't permit a readiness time at or after bedtime (same calendar
         # day), as this could cause unintended overnight warming.
-        if ready == bedtime:
-            room.evening_preheat_status = "ready_time_equals_bedtime"
+        if ready == bedtime or (bedtime >= 12 * 60 and ready >= bedtime):
+            room.evening_preheat_status = "ready_time_not_before_bedtime"
             return False, False
         schedule = evening_window(minute_now, ready, bedtime, allowance)
         if schedule.preheating:
