@@ -92,6 +92,10 @@ def evening_window(now_minute: int, ready_minute: int, bedtime_minute: int,
     ready = int(ready_minute) % 1440
     bedtime = int(bedtime_minute) % 1440
     lead = max(0, min(240, int(lead_minutes)))
+    # If bedtime is during the same afternoon/evening, an even later ready
+    # time is invalid: it must not accidentally stretch until next evening.
+    if bedtime >= 12 * 60 and ready >= bedtime:
+        return EveningWindow(False, False)
     if bedtime <= ready:
         bedtime += 1440
         if now < bedtime - 1440:
