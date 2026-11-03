@@ -72,3 +72,31 @@ def preheat_authorisation(occupancy_entity: str | None, sensor_state: str | None
     if fallback:
         return True, "house_presence_fallback"
     return False, "no_room_presence"
+
+@dataclass(frozen=True)
+class EveningWindow:
+    """One local day's bedroom warm-up, including bedtime after midnight."""
+    preheating: bool
+    holding: bool
+
+
+def evening_window(now_minute: int, ready_minute: int, bedtime_minute: int,
+                   lead_minutes: int) -> EveningWindow:
+    """Warm up before ready time and hold only until the next bedtime.
+
+    This is deliberately NOT a recurring modulo-24-hour preheat window:
+    a room must never start its *evening* warm-up the next morning.
+    A bedtime such as 00:30 is interpreted as after the evening ready time.
+    """
+    now = int(now_minute) % 1440
+    ready = int(ready_minute) % 1440
+    bedtime = int(bedtime_minute) % 1440
+    lead = max(0, min(240, int(lead_minutes)))
+    if bedtime <= ready:
+        bedtime += 1440
+        if now < bedtime - 1440:
+            now += 1440
+    return EveningWindow(
+        preheating=ready - lead <= now < ready,
+        holding=ready <= now < bedtime,
+    )

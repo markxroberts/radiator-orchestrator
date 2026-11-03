@@ -1,3 +1,19 @@
+# HeatFlow v0.7.7 — evening bedroom preheating
+
+HeatFlow has optional per-bedroom evening preheating. Go to **HeatFlow → Configure → Evening bedroom preheating**, select a bedroom and enable it. It is **disabled by default** for existing configurations. The existing `bedroom_target` helper still sets the desired temperature; no new temperature helper is required.
+
+- **Warm by**: pick the local time when the bedroom should be comfortable (default **20:00**).
+- **Adaptive advance**: base **90 minutes** with **up to 240 minutes** total, adjusted for outdoor conditions or validated learned room warming rates. The heating window starts before the selected time, then maintains the target until the configured weekday/weekend bedtime. Normal overnight setback starts at bedtime.
+- **Normal bedrooms**: preheat when the *house* is occupied, even when the bedroom's own motion sensor is off. This fixes the evening `room_unoccupied_setback` preventing warming in advance.
+- **Guest bedrooms**: mark rooms in **Holiday return: guest bedrooms** as before. When evening warm-up is enabled for a marked guest bedroom, occupancy **must be ON** by default, ideally via an `input_boolean` indicating whether the guest room is in use. An unavailable or missing occupancy sensor fails safely to no preheat. You can explicitly disable this requirement per guest bedroom if desired.
+- **Independent boiler call**: enabling **May request boiler** permits an opted-in bedroom to request the boiler during the evening window even if its usual room setting is secondary. It defaults on for *selected evening preheating*, but does not change normal scheduling.
+- **Safety**: window-open protection, house-absent setback, Away, Summer Off and holiday modes are preserved. Holiday-return preheating retains priority. The evening feature does not affect hot-water controls or EMS.
+- **Diagnostics**: the Bedroom Heating Reason sensor now shows `evening_preheat_enabled`, `evening_ready_time`, `evening_preheat_status`, `evening_preheat_trigger`, `evening_preheat_lead_minutes`, `evening_preheat_calculation`, `evening_can_start_boiler` and `evening_guest_occupancy_required`. Heating history records evening status transitions.
+
+This requires heating scheduling enabled. Before enabling evening warm-up, check that your configured bedroom target and weekday/weekend bedtimes match the intended comfort window.
+
+---
+
 # HeatFlow v0.7.6 — EMS number and select entities
 
 EMS monitoring now accepts Home Assistant `sensor`, `binary_sensor`, `switch`, `number`, `select`, `input_number`, `input_select` and `input_boolean` sources. This fixes the EMS configuration dropdowns not showing editable-number and select entities.

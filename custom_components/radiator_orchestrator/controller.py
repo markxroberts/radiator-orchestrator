@@ -14,7 +14,7 @@ from .const import *
 from .pid import PID, clamp
 from .dhw_logic import OccupancyHotWater
 from .ems_monitor import EMSMonitor
-from .linked_heating import morning_window, preheat_allowance, preheat_authorisation
+from .linked_heating import morning_window, evening_window, preheat_allowance, preheat_authorisation
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -55,6 +55,11 @@ class Room:
     morning_preheat_method: str = "not_applicable"
     morning_preheat_trigger: str = "not_configured"
     morning_preheat_status: str = "not_configured"
+    evening_preheat_minutes: int = 0
+    evening_preheat_method: str = "not_applicable"
+    evening_preheat_status: str = "not_configured"
+    evening_preheat_trigger: str = "not_configured"
+    evening_ready_time: str = "20:00"
     manual_override_target: float | None = None
     last_occupancy_state: str | None = None
     holiday_return_authorisation: str = "not_in_return_window"
@@ -92,6 +97,7 @@ class HeatingController:
         self.house_present = True
         self.preheating = False
         self.morning_preheating = False
+        self.evening_preheating = False
         self.holiday_active = False
         self.holiday_return_preheating = False
         self.holiday_return_holding = False
@@ -143,6 +149,7 @@ class HeatingController:
             "house_present": self.house_present,
             "preheating": self.preheating,
             "morning_preheating": self.morning_preheating,
+            "evening_preheating": self.evening_preheating,
             "holiday_active": self.holiday_active,
             "holiday_return_preheating": self.holiday_return_preheating,
             "holiday_return_holding": self.holiday_return_holding,
@@ -171,6 +178,8 @@ class HeatingController:
                 room.effective_primary,
                 room.morning_preheat_status,
                 room.morning_preheat_trigger,
+                room.evening_preheat_status,
+                room.evening_preheat_trigger,
                 room.holiday_return_authorisation,
                 room.manual_override_target,
                 round(room.effective_target, 2),
@@ -199,6 +208,9 @@ class HeatingController:
                     "linked_heating": list(room.linked_heating),
                     "morning_preheat_status": room.morning_preheat_status,
                     "morning_preheat_trigger": room.morning_preheat_trigger,
+                    "evening_preheat_status": room.evening_preheat_status,
+                    "evening_preheat_trigger": room.evening_preheat_trigger,
+                    "evening_preheat_lead_minutes": room.evening_preheat_minutes,
                     "holiday_return_authorisation": room.holiday_return_authorisation,
                     "temporary_override_c": room.manual_override_target})
             else:
@@ -643,6 +655,109 @@ class HeatingController:
             room.morning_preheat_status = "outside_morning_window"
         return authorised and window.preheating, authorised and window.morning_hold
 
+
+    @staticmethod
+    def _clock_minute(raw: str, default: int) -> int:
+        """Parse an HA time-selector value without requiring a helper."""
+        try:
+            hour, minute, *_ = (int(n) for n in str(raw).split(":"))
+            if 0 <= hour <= 23 and 0 <= minute <= 59:
+                return hour * 60 + minute
+        except (TypeError, ValueError):
+            pass
+        return default
+
+    def _room_evening_context(self, room, minute_now, outside, *, holiday_return_active):
+        """Optional bedroom comfort before evening use.
+
+        Regular selected bedrooms preheat while the house is occupied even
+        with their local occupancy OFF. Selected guest bedrooms instead require
+        their own occupancy entity ON (input_boolean is recommended).
+        """
+        conf = room.conf
+        if conf.get("room_type") != "bedroom" or not conf.get("evening_preheat", False):
+            return False, False
+        if not self.settings.get("enable_schedule", False):
+            room.evening_preheat_status = "schedule_disabled"
+            return False, False
+        if self.away or self.holiday_active or self.summer or holiday_return_active:
+            room.evening_preheat_status = "heating_inhibited"
+            return False, False
+        if not self.house_present:
+            room.evening_preheat_status = "house_absent"
+            return False, False
+        if room.mode == "off":
+            room.evening_preheat_status = "room_off"
+            return False, False
+        window_entity = conf.get("window")
+        if window_entity:
+            window_state = self.hass.states.get(window_entity)
+            if window_state is None or window_state.state not in (STATE_ON, STATE_OFF):
+                room.evening_preheat_status = "window_unavailable"
+                return False, False
+            if window_state.state == STATE_ON:
+                room.evening_preheat_status = "window_open"
+                return False, False
+        is_guest = conf["name"] in self.settings.get("holiday_guest_bedrooms", [])
+        guest_restriction = bool(conf.get("evening_guest_requires_occupancy", True))
+        if is_guest and guest_restriction:
+            entity = conf.get("occupancy")
+            state = self.hass.states.get(entity) if entity else None
+            if not entity:
+                room.evening_preheat_trigger = "guest_occupancy_not_configured"
+                room.evening_preheat_status = "guest_occupancy_not_configured"
+                return False, False
+            if state is None or state.state not in (STATE_ON, STATE_OFF):
+                room.evening_preheat_trigger = "guest_occupancy_unavailable"
+                room.evening_preheat_status = "guest_occupancy_unavailable"
+                return False, False
+            if state.state != STATE_ON:
+                room.evening_preheat_trigger = "guest_unoccupied"
+                room.evening_preheat_status = "guest_unoccupied"
+                return False, False
+            room.evening_preheat_trigger = "guest_room_occupied"
+        else:
+            room.evening_preheat_trigger = ("guest_occupancy_requirement_disabled" if is_guest
+                                            else "house_present_non_guest")
+        from .config_flow import SCHEDULE_TIMES
+        weekend = not self._is_workday() or self._enabled(self.settings.get("holiday_at_home"))
+        bedtime_key = "weekend_bed" if weekend else "weekday_bed"
+        bedtime = self._minutes(bedtime_key, SCHEDULE_TIMES[bedtime_key])
+        ready = self._clock_minute(conf.get("evening_ready_time", "20:00"), 1200)
+        room.evening_ready_time = f"{ready//60:02d}:{ready%60:02d}"
+        # The ready time is a local evening time; a midnight bedtime is
+        # supported, but midnight *ready* is deliberately not.
+        if not (12 * 60 <= ready < 24 * 60):
+            room.evening_preheat_status = "invalid_evening_ready_time"
+            return False, False
+        goal = self._morning_target(room)  # bedroom_target shared with evening
+        allowance_conf = {
+            "linked_preheat_minutes": conf.get("evening_preheat_minutes", 90),
+            "linked_preheat_max_minutes": conf.get("evening_preheat_max_minutes", 240),
+            "linked_extra_minutes_per_degree": conf.get("evening_extra_minutes_per_degree", 4),
+            "linked_preheat_margin_minutes": conf.get("evening_preheat_margin_minutes", 15),
+        }
+        allowance, method = preheat_allowance(
+            allowance_conf, room.measured, goal, outside,
+            self.learning.get(conf["name"]),
+            float(self.settings.get("preheat_reference_c", 15)),
+        )
+        room.evening_preheat_minutes = allowance
+        room.evening_preheat_method = method
+        # Don't permit a readiness time at or after bedtime (same calendar
+        # day), as this could cause unintended overnight warming.
+        if ready == bedtime:
+            room.evening_preheat_status = "ready_time_equals_bedtime"
+            return False, False
+        schedule = evening_window(minute_now, ready, bedtime, allowance)
+        if schedule.preheating:
+            room.evening_preheat_status = "active_preheat"
+        elif schedule.holding:
+            room.evening_preheat_status = "active_comfort_hold"
+        else:
+            room.evening_preheat_status = "outside_evening_window"
+        return schedule.preheating, schedule.holding
+
     def _bathroom_morning_target(self):
         from .config_flow import SCHEDULE_TARGETS
         try:
@@ -710,6 +825,11 @@ class HeatingController:
                 room.morning_preheat_method = "not_applicable"
                 room.morning_preheat_trigger = "not_configured"
                 room.morning_preheat_status = "not_configured"
+                room.evening_preheat_minutes = 0
+                room.evening_preheat_method = "not_applicable"
+                room.evening_preheat_status = "not_configured"
+                room.evening_preheat_trigger = "not_configured"
+                room.evening_ready_time = str(conf.get("evening_ready_time", "20:00"))[:5]
                 room.effective_primary = bool(conf.get("primary", True))
                 scheduled, room.schedule_phase, nighttime = self._scheduled_target(room)
                 # Only valid ON/OFF transitions clear an override. Missing
@@ -803,6 +923,28 @@ class HeatingController:
                         room.effective_primary = True
                     nighttime = False
 
+                # Bedroom-specific evening warm-up overrides an unoccupied
+                # setback before the configured ready time and maintains the
+                # room's ordinary bedroom target until bedtime. It never
+                # changes the separate overnight frost setback.
+                evening_pre, evening_hold = self._room_evening_context(
+                    room, minute_now, outside,
+                    holiday_return_active=holiday_return_active,
+                )
+                if evening_pre or evening_hold:
+                    goal = max(goal, self._morning_target(room))
+                    room.target_reason = (
+                        "evening_bedroom_preheat" if evening_pre
+                        else "evening_bedroom_comfort_hold"
+                    )
+                    room.schedule_phase = (
+                        "evening_bedroom_preheat" if evening_pre
+                        else "evening_bedroom_hold"
+                    )
+                    if conf.get("evening_allow_boiler", True):
+                        room.effective_primary = True
+                    nighttime = False
+
                 # A shared bathroom may link to several bedrooms. Any linked
                 # occupied bedroom qualifies; optionally house presence alone
                 # permits pre-rise heating (important for sleeping occupants).
@@ -867,6 +1009,10 @@ class HeatingController:
 
             self.morning_preheating = any(
                 r.target_reason in ("morning_room_preheat", "linked_morning_preheat")
+                for r in self.rooms.values()
+            )
+            self.evening_preheating = any(
+                r.target_reason == "evening_bedroom_preheat"
                 for r in self.rooms.values()
             )
             any_primary = any(r.demand and r.effective_primary for r in self.rooms.values())

@@ -57,6 +57,9 @@ class StatusSensor(HeatFlowEntity, SensorEntity):
             "linked_bedrooms_occupied": list(r.linked_occupied),
             "linked_bedrooms_heating": list(r.linked_heating),
             "holiday_return_authorisation": r.holiday_return_authorisation,
+            "evening_preheat_status": r.evening_preheat_status,
+            "evening_preheat_trigger": r.evening_preheat_trigger,
+            "evening_preheat_lead_minutes": r.evening_preheat_minutes,
             "temporary_override_c": r.manual_override_target,
         } for name, r in self.ctrl.rooms.items()},
         "hot_water_only_rooms": [r["name"] for r in self.ctrl.hot_water_rooms]}
@@ -139,6 +142,17 @@ class RoomReasonSensor(HeatFlowEntity, SensorEntity):
             "morning_preheat_trigger": room.morning_preheat_trigger,
             "morning_preheat_lead_minutes": room.morning_preheat_minutes,
             "morning_preheat_calculation": room.morning_preheat_method,
+            "evening_preheat_enabled": bool(room.conf.get("evening_preheat", False)),
+            "evening_ready_time": room.evening_ready_time,
+            "evening_preheat_status": room.evening_preheat_status,
+            "evening_preheat_trigger": room.evening_preheat_trigger,
+            "evening_preheat_lead_minutes": room.evening_preheat_minutes,
+            "evening_preheat_calculation": room.evening_preheat_method,
+            "evening_can_start_boiler": bool(room.conf.get("evening_allow_boiler", True)),
+            "evening_guest_occupancy_required": (
+                room.conf.get("name") in self.ctrl.settings.get("holiday_guest_bedrooms", [])
+                and bool(room.conf.get("evening_guest_requires_occupancy", True))
+            ),
             "linked_morning_preheat_minutes": room.linked_preheat_minutes,
             "linked_preheat_calculation": room.linked_preheat_method,
         }

@@ -152,6 +152,7 @@ class RadiatorOptionsFlow(config_entries.OptionsFlow):
                 "presence": "House occupancy, holidays and preheating",
                 "linked_bathroom": "Link bathrooms to bedrooms",
                 "morning_room": "Morning preheating by room",
+                "evening_bedroom": "Evening bedroom preheating",
                 "holiday_guest_bedrooms": "Holiday return: guest bedrooms",
                 "ems": "EMS-ESP monitoring (read-only)",
             },
@@ -198,7 +199,7 @@ class RadiatorOptionsFlow(config_entries.OptionsFlow):
     async def async_step_edit_details(self,user_input=None):
         rooms=self._rooms
         if user_input is not None:
-            preserved = {k: v for k, v in rooms[self._selected].items() if k.startswith("linked_") or k.startswith("morning_")}
+            preserved = {k: v for k, v in rooms[self._selected].items() if k.startswith("linked_") or k.startswith("morning_") or k.startswith("evening_")}
             old_name = rooms[self._selected]["name"]
             rooms[self._selected] = {**preserved, **user_input}
             # Linked-bedroom references use room names; update references on rename.
@@ -323,6 +324,61 @@ class RadiatorOptionsFlow(config_entries.OptionsFlow):
                 vol.All(vol.Coerce(float), vol.Range(min=0, max=30)),
             vol.Required("morning_hold_minutes", default=room.get("morning_hold_minutes", 90)):
                 vol.All(vol.Coerce(int), vol.Range(min=0, max=240)),
+        })
+
+
+    async def async_step_evening_bedroom(self, user_input=None):
+        """Select the bedroom whose evening readiness we want to configure."""
+        bedrooms = [r for r in self._rooms if r.get("room_type") == "bedroom"]
+        if not bedrooms:
+            return self.async_abort(reason="no_bedrooms")
+        if user_input is not None:
+            self._evening_bedroom_name = user_input["name"]
+            return await self.async_step_evening_bedroom_details()
+        return self.async_show_form(
+            step_id="evening_bedroom",
+            data_schema=vol.Schema({
+                vol.Required("name"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=[
+                        selector.SelectOptionDict(value=r["name"], label=r["name"])
+                        for r in bedrooms
+                    ]))
+            }),
+        )
+
+    async def async_step_evening_bedroom_details(self, user_input=None):
+        rooms = self._rooms
+        room = next((r for r in rooms if r.get("name") ==
+                     getattr(self, "_evening_bedroom_name", None)), None)
+        if room is None or room.get("room_type") != "bedroom":
+            return self.async_abort(reason="no_bedrooms")
+        if user_input is not None:
+            room.update(user_input)
+            return self._save({CONF_ROOMS: rooms})
+        return self.async_show_form(
+            step_id="evening_bedroom_details",
+            data_schema=self._evening_bedroom_schema(room),
+        )
+
+    @staticmethod
+    def _evening_bedroom_schema(room):
+        return vol.Schema({
+            vol.Required("evening_preheat", default=room.get("evening_preheat", False)): bool,
+            vol.Required("evening_ready_time", default=room.get("evening_ready_time", "20:00:00")):
+                selector.TimeSelector(),
+            vol.Required("evening_allow_boiler", default=room.get("evening_allow_boiler", True)): bool,
+            vol.Required("evening_guest_requires_occupancy", default=room.get(
+                "evening_guest_requires_occupancy", True)): bool,
+            vol.Required("evening_preheat_minutes", default=room.get("evening_preheat_minutes", 90)):
+                vol.All(vol.Coerce(int), vol.Range(min=0, max=240)),
+            vol.Required("evening_preheat_max_minutes", default=room.get("evening_preheat_max_minutes", 240)):
+                vol.All(vol.Coerce(int), vol.Range(min=0, max=240)),
+            vol.Required("evening_extra_minutes_per_degree", default=room.get(
+                "evening_extra_minutes_per_degree", 4)):
+                vol.All(vol.Coerce(float), vol.Range(min=0, max=30)),
+            vol.Required("evening_preheat_margin_minutes", default=room.get(
+                "evening_preheat_margin_minutes", 15)):
+                vol.All(vol.Coerce(int), vol.Range(min=0, max=120)),
         })
 
     async def async_step_holiday_guest_bedrooms(self, user_input=None):

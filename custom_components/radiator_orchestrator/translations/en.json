@@ -28,7 +28,8 @@
           "add_hot_water_room": "Add hot-water-only room",
           "morning_room": "Morning preheating by room",
           "holiday_guest_bedrooms": "Holiday return: guest bedrooms",
-          "ems": "EMS-ESP monitoring (read-only)"
+          "ems": "EMS-ESP monitoring (read-only)",
+          "evening_bedroom": "Evening bedroom preheating"
         }
       },
       "add_room": {
@@ -189,8 +190,8 @@
         }
       },
       "holiday_guest_bedrooms": {
-        "title": "Guest bedroom holiday-return preheating",
-        "description": "Normal rooms preheat whether occupied or not. Select ONLY guest bedrooms which should preheat on holiday return if their own occupancy helper is ON. A linked bathroom remains at setback if it is linked exclusively to unoccupied guest bedrooms. Use an input_boolean to indicate a guest room is in use; PIR motion sensors may not detect sleeping guests.",
+        "title": "Guest bedrooms — holiday and evening warming",
+        "description": "Select bedrooms that are used as guest rooms. They need their occupancy helper ON for holiday return. Evening bedroom preheating also uses this guest list unless you explicitly disable its occupancy requirement for the chosen bedroom. Use input_boolean for guests; a PIR may go OFF when nobody moves.",
         "data": {
           "holiday_guest_bedrooms": "Guest bedrooms requiring occupancy for return preheat"
         }
@@ -213,6 +214,26 @@
           "ems_dhw_charging": "DHW charging status (only if a specific sensor exists)",
           "ems_heating_pump_mode": "Heating pump mode (select; reported only, optional)",
           "ems_dhw_comfort_mode": "DHW Comfort/ECO mode (select; reported only, optional)"
+        }
+      },
+      "evening_bedroom": {
+        "title": "Choose bedroom for evening preheating",
+        "data": {
+          "name": "Bedroom"
+        }
+      },
+      "evening_bedroom_details": {
+        "title": "Evening bedroom preheating",
+        "description": "Opt in to warming this bedroom before the time it should be comfortable. The existing bedroom target helper determines temperature. Other occupied areas keep their normal schedules. Guest bedrooms are those marked under Holiday return: guest bedrooms; by default they must be occupied before evening warm-up. For guests, a room-use input_boolean is recommended over a PIR.",
+        "data": {
+          "evening_preheat": "Enable evening preheating for this bedroom",
+          "evening_ready_time": "Bedroom should be warm by (local time)",
+          "evening_allow_boiler": "May request boiler during evening warm-up (even if secondary)",
+          "evening_guest_requires_occupancy": "For a guest bedroom, require its room occupancy to be ON",
+          "evening_preheat_minutes": "Base advance warming time (minutes)",
+          "evening_preheat_max_minutes": "Maximum advance warming time (minutes)",
+          "evening_extra_minutes_per_degree": "Extra minutes per degree below outdoor reference",
+          "evening_preheat_margin_minutes": "Learning safety margin (minutes)"
         }
       }
     },
