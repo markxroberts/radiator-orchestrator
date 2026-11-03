@@ -120,7 +120,7 @@ class RoomReasonSensor(HeatFlowEntity, SensorEntity):
             "temporary_override_target_c": room.manual_override_target,
             "holiday_return_guest_bedroom": room.conf["name"] in self.ctrl.settings.get("holiday_guest_bedrooms", []),
             "holiday_return_authorisation": room.holiday_return_authorisation,
-            "work_return_preheating": self.ctrl.work_preheating,
+            "work_return_preheating": getattr(self.ctrl, "work_preheating", False),
             "work_return_authorisation": room.work_return_authorisation,
             "error_to_effective_target_c": (
                 round(room.effective_target - room.measured, 2) if room.measured is not None else None

@@ -97,6 +97,10 @@ class HeatingController:
         self.calibration_paused = False
         self.house_present = True
         self.preheating = False
+        # Home Assistant reads sensor properties during platform registration,
+        # before async_evaluate is called by async_setup_entry. Initialise all
+        # diagnostics here so the first state write cannot raise AttributeError.
+        self.work_preheating = False
         self.morning_preheating = False
         self.evening_preheating = False
         self.holiday_active = False

@@ -1,3 +1,16 @@
+# HeatFlow v0.7.9 — fix startup-unavailable Heating Reason entities
+
+This release fixes a startup-order regression introduced in v0.7.8. Home Assistant can read Heating Reason sensor attributes **before** HeatFlow completes its first control evaluation. The newly exposed `work_return_preheating` field was not initialised in the controller constructor and could raise `AttributeError` while Home Assistant was registering entities.
+
+- Initialise `work_preheating` to `False` in the controller constructor, before any platform is forwarded or entity is registered.
+- Make the diagnostic attribute defensive, so an unavailable or outdated controller property will not break the entire entity's state.
+- Add a specific startup regression test that loads the Heating Reason sensor with isolated HA stubs, accesses its `native_value` and `extra_state_attributes` **before the first evaluation**, and repeats after the first control evaluation.
+- Retain the v0.7.8 guest-bedroom exclusion during work-return preheating; all room schedules, boiler relays, DHW and monitor-only EMS behaviour remain unchanged.
+
+**Upgrade:** Update the integration to v0.7.9 through HACS, then restart Home Assistant. Check that each room's Heating Reason sensor is available and that `work_return_preheating` is `false` until work-return preheating starts. If the entire integration still fails to load, review the Home Assistant log for the earliest `radiator_orchestrator` exception.
+
+---
+
 # HeatFlow v0.7.8 — guest bedrooms excluded from work-return preheating
 
 This release corrects a regression in work-return preheating: **rooms marked as guest bedrooms no longer receive the scheduled heating target merely because HeatFlow is preparing for the household's return from work**.
