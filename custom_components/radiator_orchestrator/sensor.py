@@ -57,6 +57,7 @@ class StatusSensor(HeatFlowEntity, SensorEntity):
             "linked_bedrooms_occupied": list(r.linked_occupied),
             "linked_bedrooms_heating": list(r.linked_heating),
             "holiday_return_authorisation": r.holiday_return_authorisation,
+            "work_return_authorisation": r.work_return_authorisation,
             "evening_preheat_status": r.evening_preheat_status,
             "evening_preheat_trigger": r.evening_preheat_trigger,
             "evening_preheat_lead_minutes": r.evening_preheat_minutes,
@@ -119,6 +120,8 @@ class RoomReasonSensor(HeatFlowEntity, SensorEntity):
             "temporary_override_target_c": room.manual_override_target,
             "holiday_return_guest_bedroom": room.conf["name"] in self.ctrl.settings.get("holiday_guest_bedrooms", []),
             "holiday_return_authorisation": room.holiday_return_authorisation,
+            "work_return_preheating": self.ctrl.work_preheating,
+            "work_return_authorisation": room.work_return_authorisation,
             "error_to_effective_target_c": (
                 round(room.effective_target - room.measured, 2) if room.measured is not None else None
             ),

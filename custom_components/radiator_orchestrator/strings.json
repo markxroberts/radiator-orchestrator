@@ -27,7 +27,7 @@
           "linked_bathroom": "Link bathrooms to bedrooms",
           "add_hot_water_room": "Add hot-water-only room",
           "morning_room": "Morning preheating by room",
-          "holiday_guest_bedrooms": "Holiday return: guest bedrooms",
+          "holiday_guest_bedrooms": "Guest bedrooms: return preheating",
           "ems": "EMS-ESP monitoring (read-only)",
           "evening_bedroom": "Evening bedroom preheating"
         }
@@ -190,8 +190,8 @@
         }
       },
       "holiday_guest_bedrooms": {
-        "title": "Guest bedrooms — holiday and evening warming",
-        "description": "Select bedrooms that are used as guest rooms. They need their occupancy helper ON for holiday return. Evening bedroom preheating also uses this guest list unless you explicitly disable its occupancy requirement for the chosen bedroom. Use input_boolean for guests; a PIR may go OFF when nobody moves.",
+        "title": "Guest bedrooms — work and holiday return preheating",
+        "description": "Select ONLY guest bedrooms whose own occupancy sensor/helper must be ON for preheating ahead of work return or holiday return. Ordinary bedrooms, living rooms and bathrooms can still warm while the house is empty. A bathroom linked only to unused guest bedrooms is excluded. The same guest list is also used for optional evening bedroom preheating. Prefer an input_boolean indicating the guest bedroom is in use rather than a PIR sensor.",
         "data": {
           "holiday_guest_bedrooms": "Guest bedrooms requiring occupancy for return preheat"
         }

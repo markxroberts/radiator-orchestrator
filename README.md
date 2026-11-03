@@ -1,3 +1,19 @@
+# HeatFlow v0.7.8 — guest bedrooms excluded from work-return preheating
+
+This release corrects a regression in work-return preheating: **rooms marked as guest bedrooms no longer receive the scheduled heating target merely because HeatFlow is preparing for the household's return from work**.
+
+- HeatFlow uses the same **Guest bedrooms: return preheating** list for work return and holiday return. In either case, a selected guest bedroom preheats **only when its own occupancy helper/sensor is ON**; missing, unavailable and OFF signals fail closed. No new guest-room configuration is required.
+- **Ordinary bedrooms, living spaces and bathrooms are not occupancy-gated** during return preheating. They continue to warm even while the house is empty.
+- A **bathroom linked only to unused guest bedrooms** is held at the normal empty-house frost target; one qualifying normal or occupied guest bedroom is sufficient to allow linked-bathroom return preheat.
+- Excluded guest rooms keep the usual **empty-house frost target** during the work-return preheat window. This does not change the ordinary occupied-house setback after somebody returns home, or the separately configured evening bedroom warm-up.
+- The adaptive work-return lead time also ignores unoccupied guest bedrooms. An unused cold guest room cannot cause the heating for the rest of the house to start too early.
+- **Room Heating Reason** shows `work_return_preheating` and `work_return_authorisation`, with explicit `work_return_guest_unoccupied`, `work_return_guest_occupancy_unavailable`, and `work_return_linked_guest_bedrooms_unoccupied` target reasons.
+- CH/DHW relay protections, holiday return, overnight setback, morning/evening bedroom warming and monitor-only EMS are unchanged.
+
+The internal Home Assistant integration domain remains `radiator_orchestrator`. Update via HACS and restart Home Assistant. Review the existing list under **Configure → Guest bedrooms: return preheating**.
+
+---
+
 # HeatFlow v0.7.7 — evening bedroom preheating
 
 HeatFlow has optional per-bedroom evening preheating. Go to **HeatFlow → Configure → Evening bedroom preheating**, select a bedroom and enable it. It is **disabled by default** for existing configurations. The existing `bedroom_target` helper still sets the desired temperature; no new temperature helper is required.

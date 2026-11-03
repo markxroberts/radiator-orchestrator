@@ -153,7 +153,7 @@ class RadiatorOptionsFlow(config_entries.OptionsFlow):
                 "linked_bathroom": "Link bathrooms to bedrooms",
                 "morning_room": "Morning preheating by room",
                 "evening_bedroom": "Evening bedroom preheating",
-                "holiday_guest_bedrooms": "Holiday return: guest bedrooms",
+                "holiday_guest_bedrooms": "Guest bedrooms: return preheating",
                 "ems": "EMS-ESP monitoring (read-only)",
             },
         )

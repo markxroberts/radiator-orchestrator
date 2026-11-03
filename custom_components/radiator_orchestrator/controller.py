@@ -63,6 +63,7 @@ class Room:
     manual_override_target: float | None = None
     last_occupancy_state: str | None = None
     holiday_return_authorisation: str = "not_in_return_window"
+    work_return_authorisation: str = "not_in_work_return_window"
 
 
 class HeatingController:
@@ -181,6 +182,7 @@ class HeatingController:
                 room.evening_preheat_status,
                 room.evening_preheat_trigger,
                 room.holiday_return_authorisation,
+                room.work_return_authorisation,
                 room.manual_override_target,
                 round(room.effective_target, 2),
                 room.demand,
@@ -212,6 +214,7 @@ class HeatingController:
                     "evening_preheat_trigger": room.evening_preheat_trigger,
                     "evening_preheat_lead_minutes": room.evening_preheat_minutes,
                     "holiday_return_authorisation": room.holiday_return_authorisation,
+                    "work_return_authorisation": room.work_return_authorisation,
                     "temporary_override_c": room.manual_override_target})
             else:
                 details = {"previous": previous.get(key)}
@@ -325,14 +328,13 @@ class HeatingController:
         # Without configured occupancy tracking, preserve v0.2.2 behaviour.
         return present if configured else True
 
-    def _holiday_return_room_authorisation(self, room):
-        """Return (allowed, reason) without gating the empty house.
+    def _return_preheat_room_authorisation(self, room):
+        """Authorise holiday/work return preheat without gating ordinary rooms.
 
-        Only *explicitly selected* guest bedrooms require their own room
-        occupancy to preheat on return. A bathroom with bedroom links follows
-        its linked bedrooms: normal bedrooms qualify automatically, guest
-        bedrooms only if their room occupancy is ON. Unlinked bathrooms and
-        all living spaces are never blocked by occupancy on holiday return.
+        Only explicitly listed guest bedrooms require their own occupancy ON.
+        A bathroom linked exclusively to unoccupied guest bedrooms is likewise
+        excluded, but an ordinary linked bedroom qualifies it. An empty house
+        must NOT prevent preheating ordinary bedrooms, living areas or bathrooms.
         """
         guests = set(self.settings.get("holiday_guest_bedrooms") or [])
         conf = room.conf
@@ -349,10 +351,15 @@ class HeatingController:
             linked = [self.rooms[n] for n in conf["linked_rooms"]
                       if n in self.rooms and self.rooms[n].conf.get("room_type") == "bedroom"]
             if linked:
-                if any(self._holiday_return_room_authorisation(r)[0] for r in linked):
+                if any(self._return_preheat_room_authorisation(r)[0] for r in linked):
                     return True, "linked_bedroom_qualifies"
                 return False, "linked_guest_bedrooms_unoccupied"
-        return True, "holiday_return_unrestricted"
+        return True, "unrestricted"
+
+    def _holiday_return_room_authorisation(self, room):
+        """Compatibility for holiday-return diagnostics and existing tests."""
+        allowed, reason = self._return_preheat_room_authorisation(room)
+        return allowed, ("holiday_return_unrestricted" if reason == "unrestricted" else reason)
 
     def _return_comfort_target(self, room):
         """Occupied comfort target for return, regardless of weekday daytime setback.
@@ -382,9 +389,11 @@ class HeatingController:
             estimates = []
             for name, room in self.rooms.items():
                 record = self.learning.get(name, {})
+                # The same guest-room exclusion applies to both holiday and
+                # work return. Unused guest bedrooms must not inflate the
+                # adaptive lead time for the whole house.
                 if (not room.conf.get("primary") or record.get("samples", 0) < 3
-                        or (self._enabled(self.settings.get("holiday_enable"))
-                            and not self._holiday_return_room_authorisation(room)[0])):
+                        or not self._return_preheat_room_authorisation(room)[0]):
                     continue
                 # Ignore rates learned far from the current outside conditions.
                 if abs(temp - record.get("outside", temp)) > 12:
@@ -848,6 +857,7 @@ class HeatingController:
                     room.manual_override_target = None
                     self._history_event("override", f"{conf['name']}: bedtime; override ended", room=conf['name'])
                 room.holiday_return_authorisation = "not_in_return_window"
+                room.work_return_authorisation = "not_in_work_return_window"
                 if nighttime and not holiday_return_active:
                     self.calibration_paused = True
                 if holiday_return_active:
@@ -869,9 +879,19 @@ class HeatingController:
                 elif self.away or self.holiday_active:
                     goal = float(self.settings.get(CONF_FROST, DEFAULT_FROST))
                     room.target_reason = "holiday_minimum"
-                elif self.preheating:
-                    goal = scheduled
-                    room.target_reason = "work_return_preheat"
+                elif self.work_preheating:
+                    permitted, reason = self._return_preheat_room_authorisation(room)
+                    room.work_return_authorisation = reason
+                    if permitted:
+                        goal = scheduled
+                        room.target_reason = "work_return_preheat"
+                    else:
+                        # The house is still empty during work-return preheat;
+                        # preserve the normal absent/frost setback for guest
+                        # rooms instead of silently demanding the boiler.
+                        goal = float(self.settings.get(CONF_FROST, DEFAULT_FROST))
+                        room.target_reason = "work_return_" + reason
+                        room.schedule_phase = "work_return_guest_excluded"
                 elif occupied is not None and occupied.state == STATE_ON:
                     room.last_occupancy = now
                     goal = scheduled
