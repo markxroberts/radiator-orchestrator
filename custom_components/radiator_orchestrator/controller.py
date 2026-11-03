@@ -85,6 +85,10 @@ class HeatingController:
         self.preheat_source = "fixed"
         self.house_absence_started = None
         self.raw_house_present = True
+        # Distinguish the first observed state after startup/reload from an
+        # actual home->away transition while HeatFlow is running. Only the
+        # latter is entitled to the absence grace period.
+        self._presence_observed = False
         self.hot_water_occupancy_requested = False
         self._dhw = OccupancyHotWater()
         self.hot_water_requested = False
@@ -415,12 +419,19 @@ class HeatingController:
     def _occupied_with_delay(self, now):
         raw = self._presence()
         self.raw_house_present = raw
+        delay = max(0.0, float(self.settings.get("absence_delay_minutes", 10))) * 60
+        if not self._presence_observed:
+            # On reload, Home Assistant can already know the house is away.
+            # That is NOT a newly observed departure, so don't invent a
+            # ten-minute grace window that suppresses work-return preheat.
+            self._presence_observed = True
+            self.house_absence_started = None if raw else now - delay
+            return raw
         if raw:
             self.house_absence_started = None
             return True
         if self.house_absence_started is None:
             self.house_absence_started = now
-        delay = float(self.settings.get("absence_delay_minutes", 10)) * 60
         return (now - self.house_absence_started) < delay
 
     def _observe_heating(self, room, now, outside):

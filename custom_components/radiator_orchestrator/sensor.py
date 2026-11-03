@@ -122,6 +122,11 @@ class RoomReasonSensor(HeatFlowEntity, SensorEntity):
             "holiday_return_authorisation": room.holiday_return_authorisation,
             "work_return_preheating": getattr(self.ctrl, "work_preheating", False),
             "work_return_authorisation": room.work_return_authorisation,
+            "house_occupancy_raw": self.ctrl.raw_house_present,
+            "house_occupancy_effective": self.ctrl.house_present,
+            "house_absence_grace_active": (
+                not self.ctrl.raw_house_present and self.ctrl.house_present
+            ),
             "error_to_effective_target_c": (
                 round(room.effective_target - room.measured, 2) if room.measured is not None else None
             ),

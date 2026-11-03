@@ -1,3 +1,21 @@
+# HeatFlow v0.7.10 — work-return preheating resumes after a restart
+
+Fixes a restart-related occupancy bug. HeatFlow's normal absence grace period (default **10 minutes**) is intended to debounce a **new** departure from the house. Previously, the first evaluation after a Home Assistant restart treated an already-absent household as though everybody had just left, keeping the effective house state "occupied" for another ten minutes.
+
+That could suppress work-return preheating throughout the beginning of its window and produce `unoccupied setback satisfied` in room Heating Reason entities instead of `work_return_preheat`.
+
+- **Startup with house already empty:** treat the current raw house-occupancy state as authoritative immediately; the work-return preheat window is evaluated on the first control tick.
+- **Normal departure after HeatFlow has observed the house occupied:** retain the configured absence delay, avoiding heating-control changes on brief presence sensor fluctuations.
+- **Returning home:** effective occupancy changes to present immediately and resets the absence grace timer.
+- **Diagnostics:** room Heating Reason attributes include `house_occupancy_raw`, `house_occupancy_effective`, and `house_absence_grace_active` so the distinction is visible.
+- **Safety and exclusions:** guest-bedroom work/holiday-return rules from v0.7.8, per-room evening preheating, morning preheating, boiler anti-cycling, window sensors, hot water and monitor-only EMS remain unchanged.
+
+When no reliable house-occupancy entity is configured, the pre-existing behaviour of assuming the household is present still applies. If an occupancy sensor reports an invalid or missing state on startup, check its availability; this fix does not establish true human presence from an unavailable sensor.
+
+**Upgrade:** Update v0.7.10 through HACS, restart Home Assistant and check a bedroom's Heating Reason attributes. When the home is already empty during the configured work-return window, `house_occupancy_raw` and `house_occupancy_effective` should both be `false`, and `work_return_preheating` should be `true` (assuming the schedule, Workday and Away/Summer/Holiday conditions permit it).
+
+---
+
 # HeatFlow v0.7.9 — fix startup-unavailable Heating Reason entities
 
 This release fixes a startup-order regression introduced in v0.7.8. Home Assistant can read Heating Reason sensor attributes **before** HeatFlow completes its first control evaluation. The newly exposed `work_return_preheating` field was not initialised in the controller constructor and could raise `AttributeError` while Home Assistant was registering entities.
