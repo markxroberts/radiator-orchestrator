@@ -15,6 +15,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         ("room_status", "Room Heating Summary"),
     )]
     entities.append(DiagnosticHistorySensor(ctrl))
+    entities.append(WorkReturnPreheatStatusSensor(ctrl))
     entities.append(HotWaterControlReasonSensor(ctrl))
     entities.append(HolidayReturnReasonSensor(ctrl))
     entities.extend(RoomReasonSensor(ctrl, name) for name in ctrl.rooms)
@@ -121,6 +122,7 @@ class RoomReasonSensor(HeatFlowEntity, SensorEntity):
             "holiday_return_guest_bedroom": room.conf["name"] in self.ctrl.settings.get("holiday_guest_bedrooms", []),
             "holiday_return_authorisation": room.holiday_return_authorisation,
             "work_return_preheating": getattr(self.ctrl, "work_preheating", False),
+            "work_return_preheat_status": getattr(self.ctrl, "work_return_status", "not_evaluated"),
             "work_return_authorisation": room.work_return_authorisation,
             "house_occupancy_raw": self.ctrl.raw_house_present,
             "house_occupancy_effective": self.ctrl.house_present,
@@ -163,6 +165,44 @@ class RoomReasonSensor(HeatFlowEntity, SensorEntity):
             ),
             "linked_morning_preheat_minutes": room.linked_preheat_minutes,
             "linked_preheat_calculation": room.linked_preheat_method,
+        }
+
+
+
+class WorkReturnPreheatStatusSensor(HeatFlowEntity, SensorEntity):
+    """Diagnostic reason for scheduled return preheat, including when absent."""
+    _attr_should_poll = False
+    _attr_icon = "mdi:home-clock-outline"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, ctrl):
+        self.ctrl = ctrl
+        self._attr_name = "Work Return Preheat Status"
+        self._attr_unique_id = f"{ctrl.entry.entry_id}_work_return_preheat_status"
+
+    async def async_added_to_hass(self):
+        self.async_on_remove(self.ctrl.subscribe(self.async_write_ha_state))
+
+    @property
+    def native_value(self):
+        return self.ctrl.work_return_status
+
+    @property
+    def extra_state_attributes(self):
+        from .config_flow import SCHEDULE_TIMES
+        return {
+            "preheating_active": self.ctrl.work_preheating,
+            "raw_house_present": self.ctrl.raw_house_present,
+            "effective_house_present": self.ctrl.house_present,
+            "away_mode": self.ctrl.away,
+            "summer_off": self.ctrl.summer,
+            "holiday_active": self.ctrl.holiday_active,
+            "preheat_lead_minutes": self.ctrl.preheat_minutes,
+            "preheat_calculation": self.ctrl.preheat_source,
+            "weekday_evening_time": self.ctrl._helper(
+                "weekday_evening", SCHEDULE_TIMES["weekday_evening"]
+            ),
+            "workday_entity": self.ctrl.settings.get("workday"),
         }
 
 

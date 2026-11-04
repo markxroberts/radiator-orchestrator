@@ -1,3 +1,24 @@
+# HeatFlow v0.7.11 — remote manual heating and work-return diagnostics
+
+When everybody is out, HeatFlow applies the house-absent setback, and previous versions ignored a manual change made to a HeatFlow room thermostat. This prevented remote prewarming when the automatic work-return window did not run.
+
+**Fix:** An explicit manual change on a **HeatFlow Heating** virtual thermostat now takes priority over the empty-house setback while scheduling is enabled, during the daytime/evening schedule. Use the HeatFlow virtual room thermostat, not the Zigbee/Aqara radiator valve directly. Manual adjustments remain temporary (expire on an observed room-occupancy transition or at bedtime), and their original target is still remembered.
+
+**Safety:** This does not override HeatFlow's *Holiday / Away* switch, holiday mode, *Summer Heating Off*, room turned Off, night setback, window-open protection, or boiler minimum on/off times. A secondary room cannot independently start the boiler; use a primary room for an immediate remote demand. No EMS control changes are made.
+
+There is now a **Work Return Preheat Status** diagnostic sensor, as well as `work_return_preheat_status` in each room's Heating Reason attributes. The sensor reports `active` or the first reason preheating is blocked:
+
+- `schedule_disabled`, `workday_unavailable`, `not_workday`
+- `holiday_at_home`, `holiday_active`, `house_present`
+- `away_mode_enabled`, `summer_heating_off`
+- `before_preheat_window`, `after_return_time`
+
+It exposes both raw and effective house occupancy, the calculated preheating lead, its source, and the configured weekday evening time. This distinguishes wrong occupancy/holiday/Workday states from a schedule timing issue. The v0.7.10 restart fix and v0.7.8 guest-room exclusions remain in place.
+
+**Install:** Update to v0.7.11 through HACS and restart Home Assistant. To warm the house remotely, set a higher temperature on a **HeatFlow Heating** climate entity in a primary room; verify **Heating Demand** and **Boiler Heating Relay** after the relay's configured minimum-off interval. Avoid manually toggling the underlying boiler relay while HeatFlow is running.
+
+---
+
 # HeatFlow v0.7.10 — work-return preheating resumes after a restart
 
 Fixes a restart-related occupancy bug. HeatFlow's normal absence grace period (default **10 minutes**) is intended to debounce a **new** departure from the house. Previously, the first evaluation after a Home Assistant restart treated an already-absent household as though everybody had just left, keeping the effective house state "occupied" for another ten minutes.

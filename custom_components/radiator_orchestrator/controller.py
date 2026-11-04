@@ -105,6 +105,7 @@ class HeatingController:
         # before async_evaluate is called by async_setup_entry. Initialise all
         # diagnostics here so the first state write cannot raise AttributeError.
         self.work_preheating = False
+        self.work_return_status = "not_evaluated"
         self.morning_preheating = False
         self.evening_preheating = False
         self.holiday_active = False
@@ -157,6 +158,7 @@ class HeatingController:
         snapshot = {
             "house_present": self.house_present,
             "preheating": self.preheating,
+            "work_return_status": self.work_return_status,
             "morning_preheating": self.morning_preheating,
             "evening_preheating": self.evening_preheating,
             "holiday_active": self.holiday_active,
@@ -415,6 +417,41 @@ class HeatingController:
                 self.preheat_source = "learned"
         self.preheat_minutes = max(0, min(int(self.settings.get("max_preheat_minutes", 360)), int(allowance)))
         return self.preheat_minutes
+
+
+    def _work_return_window_state(self, now_local, at_home_holiday):
+        """Explain why scheduled work-return preheat is active or blocked.
+
+        This runs on each evaluation so a user can diagnose a failure
+        remotely, even before the work-return time window begins.
+        """
+        if not self.settings.get("enable_schedule", False):
+            return False, "schedule_disabled"
+        workday_entity = self.settings.get("workday")
+        if workday_entity:
+            state = self.hass.states.get(workday_entity)
+            if state is None or state.state not in (STATE_ON, STATE_OFF):
+                return False, "workday_unavailable"
+        if not self._is_workday():
+            return False, "not_workday"
+        if at_home_holiday:
+            return False, "holiday_at_home"
+        if self.holiday_active:
+            return False, "holiday_active"
+        if self.house_present:
+            return False, "house_present"
+        if self.away:
+            return False, "away_mode_enabled"
+        if self.summer:
+            return False, "summer_heating_off"
+        evening = self._minutes("weekday_evening", "17:00")
+        minute = now_local.hour * 60 + now_local.minute
+        lead_minutes = self._preheat_minutes()
+        if minute >= evening:
+            return False, "after_return_time"
+        if minute < evening - lead_minutes:
+            return False, "before_preheat_window"
+        return True, "active"
 
     def _occupied_with_delay(self, now):
         raw = self._presence()
@@ -816,13 +853,12 @@ class HeatingController:
             holiday_return_active = holiday_preheat or holiday_hold
             at_home_holiday = self._enabled(self.settings.get("holiday_at_home"))
             now_local = dt_util.now()
-            # Preheat before the scheduled evening return from work even when away.
-            evening = self._minutes("weekday_evening", "17:00")
-            minute = now_local.hour * 60 + now_local.minute
-            work_preheat = (self.settings.get("enable_schedule", False) and self._is_workday()
-                and not at_home_holiday and not self.holiday_active and not self.house_present
-                and not self.away and not self.summer
-                and evening - self._preheat_minutes() <= minute < evening)
+            # Work-return preheating depends on effective absence, not merely
+            # the user's location. Track the first blocking condition so the
+            # status sensor can explain exactly why heat was not requested.
+            work_preheat, self.work_return_status = self._work_return_window_state(
+                now_local, at_home_holiday
+            )
             self.work_preheating = work_preheat
             self.preheating = holiday_preheat or work_preheat
             heat_allowed = not self.summer or self.away or self.holiday_active
@@ -996,8 +1032,12 @@ class HeatingController:
                             room.effective_primary = True
                         nighttime = False
 
+                # An explicit HeatFlow thermostat adjustment is a deliberate
+                # request for heat even when everybody is out. Continue to
+                # respect manual Away, holiday, Summer Off, night, window and
+                # disabled-room protections; never issue EMS commands.
                 if (room.manual_override_target is not None and not nighttime
-                        and not self.summer and (self.house_present or holiday_return_active)
+                        and not self.summer
                         and (not self.away and not self.holiday_active or holiday_return_active)
                         and (not holiday_return_active or self._holiday_return_room_authorisation(room)[0])):
                     goal = room.manual_override_target
