@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 from .const import *
 from .pid import PID, clamp
+from .trv_compensation import read_trv_temperature, trv_boosted_setpoint
 from .dhw_logic import OccupancyHotWater
 from .ems_monitor import EMSMonitor
 from .linked_heating import morning_window, evening_window, preheat_allowance, preheat_authorisation
@@ -51,6 +52,10 @@ class Room:
     linked_preheat_minutes: int = 0
     linked_preheat_method: str = "not_applicable"
     trv_target: float = 5.0
+    trv_internal_temperature: float | None = None
+    trv_base_target: float = 5.0
+    trv_compensation_status: str = "disabled"
+    trv_compensation_applied: bool = False
     morning_preheat_minutes: int = 0
     morning_preheat_method: str = "not_applicable"
     morning_preheat_trigger: str = "not_configured"
@@ -193,6 +198,7 @@ class HeatingController:
                 room.evening_preheat_trigger,
                 room.holiday_return_authorisation,
                 room.work_return_authorisation,
+                room.trv_compensation_status,
                 room.manual_override_target,
                 round(room.effective_target, 2),
                 room.demand,
@@ -225,6 +231,9 @@ class HeatingController:
                     "evening_preheat_lead_minutes": room.evening_preheat_minutes,
                     "holiday_return_authorisation": room.holiday_return_authorisation,
                     "work_return_authorisation": room.work_return_authorisation,
+                    "trv_compensation_status": room.trv_compensation_status,
+                    "trv_internal_temperature_c": room.trv_internal_temperature,
+                    "trv_setpoint_c": room.trv_target,
                     "temporary_override_c": room.manual_override_target})
             else:
                 details = {"previous": previous.get(key)}
@@ -1094,12 +1103,39 @@ class HeatingController:
             self.boiler_requested = any_primary
             for room in self.rooms.values():
                 self._observe_heating(room, now, outside)
-            # Secondary rooms cannot independently call heat; they only participate during a primary call.
+            # Secondary rooms cannot independently call heat; they only
+            # participate while a primary room is calling the boiler.
+            # When opted in, compare the ordinary PID target against the
+            # TRV's *own* sensor, which may read artificially warm next to
+            # the radiator. The separate room sensor remains authoritative
+            # for whether heat is requested and when it should stop.
             for room in self.rooms.values():
-                if room.blocked_reason or not room.demand or (not room.effective_primary and not any_primary):
+                trv_state = self.hass.states.get(room.conf["trv"])
+                room.trv_internal_temperature = read_trv_temperature(trv_state)
+                room.trv_compensation_applied = False
+                eligible = (not room.blocked_reason and room.demand
+                            and (room.effective_primary or any_primary))
+                if not eligible:
                     trv_target = 5.0
+                    room.trv_base_target = 5.0
+                    room.trv_compensation_status = (
+                        "not_heating" if room.conf.get("trv_internal_temp_compensation", False)
+                        else "disabled"
+                    )
                 else:
-                    trv_target = clamp(room.effective_target + room.output, 5, 30)
+                    base = clamp(room.effective_target + room.output, 5, 30)
+                    room.trv_base_target = base
+                    trv_target = base
+                    if room.conf.get("trv_internal_temp_compensation", False):
+                        trv_target, status = trv_boosted_setpoint(
+                            base,
+                            room.trv_internal_temperature,
+                            room.conf.get("trv_open_margin_c", 1.5),
+                        )
+                        room.trv_compensation_status = status
+                        room.trv_compensation_applied = trv_target > base + 0.01
+                    else:
+                        room.trv_compensation_status = "disabled"
                 room.trv_target = trv_target
                 await self._write_trv(room, trv_target)
             await self._set_relay(self.settings[CONF_HEAT_SWITCH], any_primary, now)

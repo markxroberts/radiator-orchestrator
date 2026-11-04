@@ -42,6 +42,9 @@ def room_schema(existing: dict | None = None, hot_water_only: bool = False):
         vol.Required("room_type", default=old.get("room_type", "living")): selector.SelectSelector(selector.SelectSelectorConfig(options=["living", "bedroom", "bathroom"])),
         vol.Required("target",default=old.get("target",20.0)): vol.All(vol.Coerce(float),vol.Range(min=5,max=30)),
         vol.Required("unoccupied_target",default=old.get("unoccupied_target",16.0)): vol.All(vol.Coerce(float),vol.Range(min=5,max=25)),
+        vol.Required("trv_internal_temp_compensation", default=old.get("trv_internal_temp_compensation", False)): bool,
+        vol.Required("trv_open_margin_c", default=old.get("trv_open_margin_c", 1.5)):
+            vol.All(vol.Coerce(float), vol.Range(min=0.5, max=5.0)),
         vol.Required("kp",default=old.get("kp",1.5)): vol.All(vol.Coerce(float),vol.Range(min=0,max=20)),
         vol.Required("ki",default=old.get("ki",0.00015)): vol.All(vol.Coerce(float),vol.Range(min=0,max=0.1)),
         vol.Required("kd",default=old.get("kd",0.0)): vol.All(vol.Coerce(float),vol.Range(min=0,max=100)),

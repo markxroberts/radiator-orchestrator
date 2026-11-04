@@ -48,8 +48,11 @@
           "kd": "PID derivative gain",
           "room_type": "Room type / target profile",
           "occupancy_triggers_hot_water": "Room occupancy triggers hot water",
-          "early_occupancy_heating": "Heat when occupied before rising time (morning only)"
-        }
+          "early_occupancy_heating": "Heat when occupied before rising time (morning only)",
+          "trv_internal_temp_compensation": "Compensate for TRV's internal temperature when heating",
+          "trv_open_margin_c": "TRV opening margin above its own sensor (°C)"
+        },
+        "description": "Configure the room sensor and radiator TRV. Optional TRV temperature compensation opens a valve that reads warmer near the radiator than the separate room sensor."
       },
       "edit_room": {
         "title": "Choose room",
@@ -73,8 +76,11 @@
           "kd": "PID derivative gain",
           "room_type": "Room type / target profile",
           "occupancy_triggers_hot_water": "Room occupancy triggers hot water",
-          "early_occupancy_heating": "Heat when occupied before rising time (morning only)"
-        }
+          "early_occupancy_heating": "Heat when occupied before rising time (morning only)",
+          "trv_internal_temp_compensation": "Compensate for TRV's internal temperature when heating",
+          "trv_open_margin_c": "TRV opening margin above its own sensor (°C)"
+        },
+        "description": "Optional TRV compensation uses the valve's own current temperature plus an opening margin only while the separate room sensor is calling for heat; defaults off for existing rooms."
       },
       "remove_room": {
         "title": "Remove room",

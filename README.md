@@ -1,3 +1,21 @@
+# HeatFlow v0.7.12 — optional TRV internal temperature compensation
+
+This release fixes a failure mode where HeatFlow's separate room sensor is below its comfort target but a nearby TRV's own temperature sensor reads warmer than its commanded setpoint. For example, a radiator valve may read **24.4°C** while the existing PID sends **23°C**, so its own thermostat closes before the room warms.
+
+Under **HeatFlow → Configure → Edit room → Master Bedroom**, you can enable **Compensate for TRV's internal temperature when heating** and set **TRV opening margin above its own sensor (°C)**, default **1.5°C**. This is **off for all existing rooms** until explicitly enabled; configure other affected rooms independently.
+
+When the room is genuinely demanding heat and is permitted to participate in boiler heating, HeatFlow reads the existing Zigbee/TRV climate entity's `current_temperature`. The output is the greater of the ordinary external-sensor PID setpoint and the TRV's measured temperature plus the chosen opening margin, **rounded upward to the next 0.5°C** and capped at **30°C**. For the observed 24.4°C internal temperature and 23°C ordinary setpoint, the corrected command is **26.0°C**.
+
+The *separate room temperature sensor* remains the sole source deciding when a room reaches its target. When demand ends, the room has a window open, or it cannot participate in an active boiler call, the TRV is returned to the usual 5°C off setpoint. Boiler minimum on/off time, guest bedroom restrictions, Away, holiday, Summer Off, scheduled night setback, manual overrides, EMS monitor-only and hot-water controls remain unchanged.
+
+If the TRV's `current_temperature` is missing, invalid or unavailable, HeatFlow falls back to the original PID setpoint rather than inventing a reading. If the necessary setting exceeds 30°C, it is capped and the Heating Reason diagnostic reports `max_setpoint_limited`. There is no guarantee a valve will actually open at its maximum target; consider a TRV's calibration or sensor configuration if that happens.
+
+New **Heating Reason** attributes: `trv_internal_temperature_c`, `trv_pid_base_setpoint_c`, `requested_trv_setpoint_c`, `trv_compensation_enabled`, `trv_opening_margin_c`, `trv_compensation_status`, and `trv_compensation_applied`. The HeatFlow virtual thermostat also exposes the internal measurement and compensation status.
+
+**Install:** Update HeatFlow through HACS and restart Home Assistant. Enable compensation for affected rooms under **Edit room**. Confirm the bedroom's *external* measured temperature remains below target, its `demand` is true, its `trv_compensation_status` is `boosted`, and the **actual Aqara climate target** is above its own internal measurement. The normal 60-second TRV write throttle may delay an updated command.
+
+---
+
 # HeatFlow v0.7.11 — remote manual heating and work-return diagnostics
 
 When everybody is out, HeatFlow applies the house-absent setback, and previous versions ignored a manual change made to a HeatFlow room thermostat. This prevented remote prewarming when the automatic work-return window did not run.
