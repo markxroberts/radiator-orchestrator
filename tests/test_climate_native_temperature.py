@@ -68,7 +68,12 @@ async def test_native_temperature_keeps_external_sensor_and_schedule(house, monk
 
 @pytest.mark.asyncio
 async def test_native_target_retains_manual_override(house, monkeypatch):
-    ha, _, _, _, make = house
+    ha, _, _, current, make = house
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    # Temporary overrides are deliberately ignored during the night
+    # setback: test their existing behaviour inside a daytime/evening slot.
+    current[0] = datetime(2026, 10, 12, 18, 0, tzinfo=ZoneInfo("Europe/London"))
     platform = _climate(monkeypatch)
     ctrl = make()
     await ctrl.async_evaluate()
