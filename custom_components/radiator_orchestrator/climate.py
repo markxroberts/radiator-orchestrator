@@ -10,7 +10,7 @@ async def async_setup_entry(hass,entry,async_add_entities):
 
 class RoomClimate(HeatFlowEntity, ClimateEntity):
     _attr_should_poll=False
-    _attr_temperature_unit=UnitOfTemperature.CELSIUS
+    _attr_native_temperature_unit=UnitOfTemperature.CELSIUS
     _attr_hvac_modes=[HVACMode.HEAT,HVACMode.OFF]
     _attr_supported_features=ClimateEntityFeature.TARGET_TEMPERATURE
     _attr_min_temp=5
@@ -43,11 +43,11 @@ class RoomClimate(HeatFlowEntity, ClimateEntity):
         return HVACAction.IDLE
 
     @property
-    def current_temperature(self):
+    def native_current_temperature(self):
         return self.room.measured
 
     @property
-    def target_temperature(self):
+    def native_target_temperature(self):
         # The climate card must not display a manual target which the
         # schedule is currently overriding. This reflects the actual control
         # temperature (read-only computed setpoint, recalculated each tick).

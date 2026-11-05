@@ -1,3 +1,19 @@
+# HeatFlow v0.7.14 — Home Assistant 2026.11 climate API compatibility
+
+Home Assistant 2026.11 renamed the temperature properties used by climate integrations and warns that the old names will stop working in 2027.11. HeatFlow's `RoomClimate` has been migrated to:
+
+- `_attr_native_temperature_unit = UnitOfTemperature.CELSIUS` (previously `_attr_temperature_unit`)
+- `native_current_temperature` (previously `current_temperature`)
+- `native_target_temperature` (previously `target_temperature`)
+
+This is a compatibility-only change: the room's measured temperature still comes from its configured external sensor, and its displayed target still reflects the active heating schedule or manually configured target. Heating decisions, temporary room overrides, TRV valve compensation, boiler minimum-on/off protection, Hive/EMS read-only cycle monitoring, and domestic hot-water controls are unchanged.
+
+This release **requires Home Assistant 2026.11 or newer**, matching the new upstream API. The HACS minimum supported version was set accordingly. It includes a regression test that checks all three new members and their existing scheduled and manual-temperature behaviour.
+
+**Install:** Update HeatFlow from HACS and restart Home Assistant. The three climate-entity deprecation warnings should no longer appear. The separate v0.7.13 monitoring sensors and their Recorder statistics retain their entity IDs; a short HA restart simply leaves a brief recording gap.
+
+---
+
 # HeatFlow v0.7.13 — read-only Hive/EMS heating-cycle comparisons
 
 HeatFlow now exposes **seven recorder-friendly numeric diagnostic sensors** that align the HeatFlow controller's requests with Hive and EMS observations on the same Home Assistant timeline. This allows the boiler's short-cycling problem to be investigated without modifying the boiler, Hive thermostat or EMS settings.

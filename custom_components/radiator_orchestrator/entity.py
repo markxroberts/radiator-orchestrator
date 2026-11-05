@@ -10,5 +10,5 @@ class HeatFlowEntity(Entity):
             "name": "HeatFlow Controller",
             "manufacturer": "HeatFlow",
             "model": "Central Heating & Hot Water Controller",
-            "sw_version": "0.7.13",
+            "sw_version": "0.7.14",
         }
