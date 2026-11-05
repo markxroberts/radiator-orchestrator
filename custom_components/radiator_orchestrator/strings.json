@@ -29,7 +29,8 @@
           "morning_room": "Morning preheating by room",
           "holiday_guest_bedrooms": "Guest bedrooms: return preheating",
           "ems": "EMS-ESP monitoring (read-only)",
-          "evening_bedroom": "Evening bedroom preheating"
+          "evening_bedroom": "Evening bedroom preheating",
+          "cycle_monitor": "Heating cycle comparison (read-only)"
         }
       },
       "add_room": {
@@ -240,6 +241,15 @@
           "evening_preheat_max_minutes": "Maximum advance warming time (minutes)",
           "evening_extra_minutes_per_degree": "Extra minutes per degree below outdoor reference",
           "evening_preheat_margin_minutes": "Learning safety margin (minutes)"
+        }
+      },
+      "cycle_monitor": {
+        "title": "Heating cycle comparison (read-only)",
+        "description": "Record the timing of HeatFlow's heat request, its configured heating switch, the Hive thermostat's temperature setting and heating action, and EMS burner/CH/DHW states. All data is read-only and retained through Home Assistant Recorder. The known Hive/EMS entities are used as defaults if no selection is made. Configure different sources here if required. The EMS gas signal uses your existing EMS monitoring selection when available.",
+        "data": {
+          "cycle_hive_climate": "Hive heating climate entity (observed only)",
+          "cycle_ems_ch_entity": "EMS central-heating active binary sensor (observed only)",
+          "cycle_ems_dhw_entity": "EMS domestic hot-water active binary sensor (observed only)"
         }
       }
     },

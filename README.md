@@ -1,3 +1,27 @@
+# HeatFlow v0.7.13 — read-only Hive/EMS heating-cycle comparisons
+
+HeatFlow now exposes **seven recorder-friendly numeric diagnostic sensors** that align the HeatFlow controller's requests with Hive and EMS observations on the same Home Assistant timeline. This allows the boiler's short-cycling problem to be investigated without modifying the boiler, Hive thermostat or EMS settings.
+
+| Diagnostic sensor (under HeatFlow Controller) | State | Interpretation |
+| --- | --- | --- |
+| Cycle HeatFlow Heating Demand (0/1) | 0 / 1 | Controller's requested CH call |
+| Cycle Heating Switch State (0/1) | 0 / 1 | Confirmed HA state of the configured heating switch, e.g. `switch.boiler_controller` |
+| Cycle Hive Target Temperature | °C | Real Hive setpoint, generally 12°C / 24°C in the current setup |
+| Cycle Hive Heating Action (0/1) | 0 / 1 | Hive reports idle/off versus heating; does **not** guarantee a physical receiver relay state |
+| Cycle EMS Burner Firing (0/1) | 0 / 1 | EMS flame state, includes DHW |
+| Cycle EMS Central Heating Active (0/1) | 0 / 1 | EMS central heating active (not a flame-proving signal) |
+| Cycle EMS Hot Water Active (0/1) | 0 / 1 | EMS DHW activity to exclude DHW-only starts |
+
+These are read-only diagnostics. Their 0/1 values have `state_class: measurement` so Recorder can expose five-minute/hourly numeric statistics and approximate duty cycle. Missing/unavailable sources produce unavailable diagnostic values, not false OFF. Sensors retain stable unique IDs over restarts. State changes in Hive and EMS also trigger controller publication, in addition to the regular 60-second tick; very short events may still be missed.
+
+The new options menu **HeatFlow → Configure → Heating cycle comparison (read-only)** lets you change which Hive/EMS sources the sensors observe. When not explicitly configured, it uses `climate.boiler_controller_heat`, `binary_sensor.boiler_heatingactive`, and `binary_sensor.boiler_dhw_active`, known from the current installation. It obtains the gas/flame signal from your existing `ems_gas` mapping or defaults to `binary_sensor.boiler_burngas`. The heating switch is automatically the one already configured in HeatFlow, currently `switch.boiler_controller`; `switch.central_heating` is not assumed to be the same thing.
+
+**How to diagnose cycling:** Compare the seven cycle entities with existing `sensor.boiler_heatstarts`, `sensor.boiler_heatworkmin`, `sensor.boiler_curflowtemp`, `sensor.boiler_curburnpow` and `sensor.boiler_heatingpumpmod`. Many burner starts during a period where HeatFlow demand, HeatFlow switch and Hive heating action remain active suggest the boiler is stopping its flame within a sustained external demand. Changes in these signals immediately before burner starts implicate upstream relay/Hive arbitration instead. There can also be independent DHW firing, so filter those periods.
+
+**Important:** Recorder only starts storing these new sensor states after you install v0.7.13 and restart Home Assistant. Existing EMS counters remain available for the earlier baseline. This monitoring update does not attempt to lower the 75°C flow limit, modify pump settings, change the 24°C Hive setpoint, or otherwise control EMS.
+
+---
+
 # HeatFlow v0.7.12 — optional TRV internal temperature compensation
 
 This release fixes a failure mode where HeatFlow's separate room sensor is below its comfort target but a nearby TRV's own temperature sensor reads warmer than its commanded setpoint. For example, a radiator valve may read **24.4°C** while the existing PID sends **23°C**, so its own thermostat closes before the room warms.

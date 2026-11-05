@@ -125,6 +125,23 @@ def ems_schema(existing=None):
         schema[vol.Optional(field, description={"suggested_value": old.get(field)})] = entity
     return vol.Schema(schema)
 
+
+def cycle_monitor_schema(existing=None):
+    """Select read-only Hive/EMS sources used for recorder diagnostics."""
+    from .cycle_monitor import CYCLE_DEFAULTS
+    old = existing or {}
+    hive = selector.EntitySelector(selector.EntitySelectorConfig(domain=["climate"]))
+    binary = selector.EntitySelector(selector.EntitySelectorConfig(domain=["binary_sensor"]))
+    return vol.Schema({
+        vol.Optional("cycle_hive_climate", description={"suggested_value": old.get(
+            "cycle_hive_climate") or CYCLE_DEFAULTS["hive_climate"]}): hive,
+        vol.Optional("cycle_ems_ch_entity", description={"suggested_value": old.get(
+            "cycle_ems_ch_entity") or CYCLE_DEFAULTS["ems_ch"]}): binary,
+        vol.Optional("cycle_ems_dhw_entity", description={"suggested_value": old.get(
+            "cycle_ems_dhw_entity") or CYCLE_DEFAULTS["ems_dhw"]}): binary,
+    })
+
+
 class RadiatorOrchestratorFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
     async def async_step_user(self, user_input=None):
@@ -158,6 +175,7 @@ class RadiatorOptionsFlow(config_entries.OptionsFlow):
                 "evening_bedroom": "Evening bedroom preheating",
                 "holiday_guest_bedrooms": "Guest bedrooms: return preheating",
                 "ems": "EMS-ESP monitoring (read-only)",
+                "cycle_monitor": "Heating cycle comparison (read-only)",
             },
         )
 
@@ -423,6 +441,18 @@ class RadiatorOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             return self._save(user_input)
         return self.async_show_form(step_id="presence", data_schema=presence_schema(self._settings))
+
+    async def async_step_cycle_monitor(self, user_input=None):
+        """Choose Hive and EMS observation sources, never control targets."""
+        if user_input is not None:
+            return self._save({
+                "cycle_hive_climate": user_input.get("cycle_hive_climate"),
+                "cycle_ems_ch_entity": user_input.get("cycle_ems_ch_entity"),
+                "cycle_ems_dhw_entity": user_input.get("cycle_ems_dhw_entity"),
+            })
+        return self.async_show_form(
+            step_id="cycle_monitor", data_schema=cycle_monitor_schema(self._settings)
+        )
 
     async def async_step_ems(self, user_input=None):
         from .ems_monitor import EMS_FIELDS

@@ -3,6 +3,7 @@ from .entity import HeatFlowEntity
 import time
 from homeassistant.components.sensor import SensorEntity, SensorStateClass, SensorDeviceClass
 from .ems_monitor import EMS_NUMERIC, EMS_TEXT
+from .cycle_monitor import CYCLE_FIELDS, cycle_source, cycle_value
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.util import dt as dt_util
 from .const import DOMAIN
@@ -16,6 +17,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     )]
     entities.append(DiagnosticHistorySensor(ctrl))
     entities.append(WorkReturnPreheatStatusSensor(ctrl))
+    entities.extend(CycleTelemetrySensor(ctrl, key) for key in CYCLE_FIELDS)
     entities.append(HotWaterControlReasonSensor(ctrl))
     entities.append(HolidayReturnReasonSensor(ctrl))
     entities.extend(RoomReasonSensor(ctrl, name) for name in ctrl.rooms)
@@ -24,6 +26,49 @@ async def async_setup_entry(hass, entry, async_add_entities):
         entities.extend(EMSNumericSensor(ctrl, key) for key in EMS_NUMERIC if key in ctrl.ems.sources)
         entities.extend(EMSTextSensor(ctrl, key) for key in EMS_TEXT if key in ctrl.ems.sources)
     async_add_entities(entities)
+
+class CycleTelemetrySensor(HeatFlowEntity, SensorEntity):
+    """Recorder-friendly 0/1 and temperature measurements, read-only.
+
+    New entities are available immediately on platform registration and use
+    the same controller publication cycle as existing HeatFlow entities.
+    They never invoke a service and do not feed back into boiler arbitration.
+    """
+    _attr_should_poll = False
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, ctrl, key):
+        self.ctrl, self.key = ctrl, key
+        spec = CYCLE_FIELDS[key]
+        self._attr_unique_id = f"{ctrl.entry.entry_id}_cycle_{key}"
+        self._attr_name = f"Cycle {spec['name']}"
+        self._attr_icon = spec["icon"]
+        if key == "hive_setpoint":
+            self._attr_device_class = SensorDeviceClass.TEMPERATURE
+            self._attr_native_unit_of_measurement = "°C"
+
+    async def async_added_to_hass(self):
+        self.async_on_remove(self.ctrl.subscribe(self.async_write_ha_state))
+
+    @property
+    def native_value(self):
+        return cycle_value(self.ctrl, self.key)
+
+    @property
+    def available(self):
+        return self.native_value is not None
+
+    @property
+    def extra_state_attributes(self):
+        spec = CYCLE_FIELDS[self.key]
+        return {
+            "source_entity": cycle_source(self.ctrl.settings, self.ctrl.ems.sources, self.key),
+            "signal_meaning": spec["meaning"],
+            "monitoring_mode": "read_only",
+            "numeric_binary_meaning": "1=on, 0=off" if self.key != "hive_setpoint" else None,
+        }
+
 
 class StatusSensor(HeatFlowEntity, SensorEntity):
     _attr_should_poll = False

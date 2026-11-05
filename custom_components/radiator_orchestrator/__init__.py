@@ -33,6 +33,10 @@ async def async_setup_entry(hass, entry):
         watch.add(settings[CONF_HEAT_SWITCH])
     if settings.get(CONF_HOT_WATER_SWITCH):
         watch.add(settings[CONF_HOT_WATER_SWITCH])
+    # Align all cycle telemetry on the same HeatFlow evaluation/publication
+    # path. The watcher only reads these entities; no Hive/EMS write is made.
+    from .cycle_monitor import cycle_source_entities
+    watch.update(cycle_source_entities(settings, controller.ems.sources))
     unsub = async_track_state_change_event(hass, list(watch), controller.async_event) if watch else lambda: None
     timer = async_track_time_interval(hass, controller.async_tick, timedelta(seconds=60))
     entry.async_on_unload(unsub)
