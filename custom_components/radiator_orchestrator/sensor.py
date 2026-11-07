@@ -15,6 +15,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         ("preheat_source", "Preheat Calculation Method"),
         ("room_status", "Room Heating Summary"),
     )]
+    entities.extend(RoomDemandNumericSensor(ctrl, key) for key in ("active", "primary", "weighted"))
     entities.append(DiagnosticHistorySensor(ctrl))
     entities.append(WorkReturnPreheatStatusSensor(ctrl))
     entities.extend(CycleTelemetrySensor(ctrl, key) for key in CYCLE_FIELDS)
@@ -26,6 +27,54 @@ async def async_setup_entry(hass, entry, async_add_entities):
         entities.extend(EMSNumericSensor(ctrl, key) for key in EMS_NUMERIC if key in ctrl.ems.sources)
         entities.extend(EMSTextSensor(ctrl, key) for key in EMS_TEXT if key in ctrl.ems.sources)
     async_add_entities(entities)
+
+class RoomDemandNumericSensor(HeatFlowEntity, SensorEntity):
+    """Read-only, recorder-friendly demand indicators.
+
+    These are room requests, not physical TRV valve-position measurements.
+    Weighted demand is a dimensionless proxy, not estimated thermal kW.
+    """
+    _attr_should_poll = False
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, ctrl, key):
+        self.ctrl, self.key = ctrl, key
+        self._attr_unique_id = f"{ctrl.entry.entry_id}_room_demand_{key}"
+        self._attr_name = {
+            "active": "Active Radiator Demand Count",
+            "primary": "Primary Radiator Demand Count",
+            "weighted": "Radiator Demand Proxy",
+        }[key]
+        self._attr_icon = "mdi:radiator"
+
+    async def async_added_to_hass(self):
+        self.async_on_remove(self.ctrl.subscribe(self.async_write_ha_state))
+
+    @property
+    def native_value(self):
+        rooms = list(self.ctrl.rooms.values())
+        if self.key == "active":
+            return sum(bool(r.demand) for r in rooms)
+        if self.key == "primary":
+            return sum(bool(r.demand and r.effective_primary) for r in rooms)
+        # Temperature deficit proxy only: radiator capacities are not known.
+        # Keep this observational and do not feed it into boiler control.
+        return round(sum(
+            max(0.0, float(r.effective_target) - float(r.measured))
+            for r in rooms if r.demand and r.measured is not None
+            and r.effective_target is not None
+        ), 2)
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "monitoring_mode": "read_only",
+            "meaning": "Room heating requests, not confirmed valve openings"
+            if self.key != "weighted" else
+            "Sum of positive target-minus-measured deficits in calling rooms; not kW",
+        }
+
 
 class CycleTelemetrySensor(HeatFlowEntity, SensorEntity):
     """Recorder-friendly 0/1 and temperature measurements, read-only.
