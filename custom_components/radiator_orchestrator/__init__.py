@@ -7,6 +7,7 @@ from homeassistant.helpers.event import async_track_state_change_event, async_tr
 from .const import DOMAIN, CONF_ROOMS, CONF_HEAT_SWITCH, CONF_HOT_WATER_SWITCH
 from .controller import HeatingController
 from .ems_monitor import EMS_ENABLED, EMS_FIELDS
+from .ch_cycle_recorder import CHCycleRecorder, EXTRA_SOURCES
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.CLIMATE, Platform.SWITCH, Platform.NUMBER, Platform.BINARY_SENSOR, Platform.SENSOR]
@@ -16,6 +17,7 @@ async def async_setup_entry(hass, entry):
     controller = HeatingController(hass, entry, settings)
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = controller
     await controller.async_initialize()
+    controller.ch_cycle_recorder = CHCycleRecorder(controller)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     watch = set()
     for room in settings.get(CONF_ROOMS, []):
@@ -37,6 +39,15 @@ async def async_setup_entry(hass, entry):
     # path. The watcher only reads these entities; no Hive/EMS write is made.
     from .cycle_monitor import cycle_source_entities
     watch.update(cycle_source_entities(settings, controller.ems.sources))
+    # Observe every burner transition rather than sampling only on the 60s tick.
+    cycle_watch = cycle_source_entities(settings, controller.ems.sources)
+    cycle_watch.update(EXTRA_SOURCES.values())
+    if settings.get('outdoor_temperature'):
+        cycle_watch.add(settings['outdoor_temperature'])
+    def record_cycle(event):
+        controller.ch_cycle_recorder.sample()
+    cycle_unsub = async_track_state_change_event(hass, list(cycle_watch), record_cycle)
+    entry.async_on_unload(cycle_unsub)
     unsub = async_track_state_change_event(hass, list(watch), controller.async_event) if watch else lambda: None
     timer = async_track_time_interval(hass, controller.async_tick, timedelta(seconds=60))
     entry.async_on_unload(unsub)
