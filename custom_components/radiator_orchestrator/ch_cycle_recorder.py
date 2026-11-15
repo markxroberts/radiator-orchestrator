@@ -84,7 +84,7 @@ class CHCycleRecorder:
                 (v for v in (self.active["peak_flow_c"], snapshot["flow_c"]) if v is not None),
                 default=None,
             )
-            if snapshot["ems_dhw"] != 0 or snapshot["ems_ch"] != 1:
+            if flame == 1 and (snapshot["ems_dhw"] != 0 or snapshot["ems_ch"] != 1):
                 self.active["classification_uncertain"] = True
         if flame is None:
             # An unavailable burner signal invalidates the timing; do not
