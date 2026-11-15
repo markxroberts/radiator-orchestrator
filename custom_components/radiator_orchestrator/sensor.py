@@ -16,6 +16,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         ("room_status", "Room Heating Summary"),
     )]
     entities.extend(RoomDemandNumericSensor(ctrl, key) for key in ("active", "primary", "weighted"))
+    entities.append(CHCycleLastDurationSensor(ctrl))
     entities.append(DiagnosticHistorySensor(ctrl))
     entities.append(WorkReturnPreheatStatusSensor(ctrl))
     entities.extend(CycleTelemetrySensor(ctrl, key) for key in CYCLE_FIELDS)
@@ -73,6 +74,39 @@ class RoomDemandNumericSensor(HeatFlowEntity, SensorEntity):
             "meaning": "Room heating requests, not confirmed valve openings"
             if self.key != "weighted" else
             "Sum of positive target-minus-measured deficits in calling rooms; not kW",
+        }
+
+
+class CHCycleLastDurationSensor(HeatFlowEntity, SensorEntity):
+    """Last completed burner cycle, with CH/DHW uncertainty explicitly labelled."""
+    _attr_should_poll = False
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "s"
+    _attr_icon = "mdi:timer-outline"
+
+    def __init__(self, ctrl):
+        self.ctrl = ctrl
+        self._attr_name = "Last CH Burner Cycle Duration"
+        self._attr_unique_id = f"{ctrl.entry.entry_id}_last_ch_cycle_duration"
+
+    async def async_added_to_hass(self):
+        self.async_on_remove(self.ctrl.ch_cycle_recorder.subscribe(self.async_write_ha_state))
+
+    @property
+    def native_value(self):
+        last = self.ctrl.ch_cycle_recorder.last
+        return last["duration_seconds"] if last and last["classification"] == "CH" else None
+
+    @property
+    def extra_state_attributes(self):
+        monitor = self.ctrl.ch_cycle_recorder
+        return {
+            "last_cycle": monitor.last,
+            "recent_cycles": list(monitor.recent)[-5:],
+            "completed_since_reload": monitor.completed,
+            "classification_note": "CH requires EMS CH=on and DHW=off throughout observed firing",
+            "monitoring_mode": "read_only",
         }
 
 
