@@ -73,6 +73,10 @@ class CHCycleRecorder:
             "ems_dhw": binary_state(state("ems_dhw")),
         }
 
+    async def async_handle_state_change(self, event):
+        """Sample on HA's event loop so sensor listeners can write state inline."""
+        self.sample()
+
     def sample(self, when=None):
         now = when or datetime.now(timezone.utc)
         ctrl = self.ctrl

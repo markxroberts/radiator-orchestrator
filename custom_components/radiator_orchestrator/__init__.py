@@ -44,9 +44,9 @@ async def async_setup_entry(hass, entry):
     cycle_watch.update(EXTRA_SOURCES.values())
     if settings.get('outdoor_temperature'):
         cycle_watch.add(settings['outdoor_temperature'])
-    def record_cycle(event):
-        controller.ch_cycle_recorder.sample()
-    cycle_unsub = async_track_state_change_event(hass, list(cycle_watch), record_cycle)
+    cycle_unsub = async_track_state_change_event(
+        hass, list(cycle_watch), controller.ch_cycle_recorder.async_handle_state_change
+    )
     entry.async_on_unload(cycle_unsub)
     unsub = async_track_state_change_event(hass, list(watch), controller.async_event) if watch else lambda: None
     timer = async_track_time_interval(hass, controller.async_tick, timedelta(seconds=60))
