@@ -1,3 +1,29 @@
+# HeatFlow v0.7.17 — link bathrooms to occupied living rooms
+
+Bathrooms can now link to any combination of **bedrooms and living rooms**, including kitchen, dining room and study configurations with room type **living**. Existing bedroom links and saved settings need no migration.
+
+## Settings
+
+1. Update through HACS and restart Home Assistant.
+2. Under **Settings → Devices & services → HeatFlow → Configure → Edit room**, ensure the living room, kitchen, dining room and study each have room type **living** and their own occupancy entity (`binary_sensor` or `input_boolean`).
+3. Open **Configure → Link bathrooms to rooms**, choose the downstairs bathroom and select those rooms under **Linked bedrooms or living rooms**.
+4. Enable **Warm with occupied living rooms or bedrooms calling for heat** (the existing option, enabled by default).
+5. Keep the bathroom **secondary** if it should only use heating already requested elsewhere. Make it **primary** only if it should be allowed to request the boiler itself.
+
+Any linked living room reporting **on** raises the bathroom to its own scheduled bathroom target, even if the living room is already warm. An off, missing, unknown or unavailable living-room occupancy entity does not qualify; there is no linked living-room occupancy grace period. Bedroom links retain their existing demand-based behaviour. Disabling the linked warming option disables both forms of daytime linking. It does not disable separately configured morning preparation.
+
+The bathroom uses its existing morning/day/evening target helpers, not the living room's target. Daytime bathroom target defaults to 17°C: raise that helper if you want a warmer daytime bathroom. Overnight protection, away/empty-house restrictions, summer mode, room OFF, window and temperature safeguards remain enforced. Temporary bathroom thermostat overrides take priority over linked warming.
+
+**Optional morning preparation:** “Warm bathroom before scheduled rising time” and “Bathroom may start boiler during morning warm-up” retain their existing meanings and lead/hold settings. Occupied living rooms can authorise this window. House-presence fallback applies only when at least one bedroom is linked, and linked-bedroom input_boolean gating remains unchanged. A living-only bathroom needs actual linked occupancy (or its own explicit occupancy input_boolean) for morning preparation. For predictable downstairs morning warming independent of living-room occupancy, use the existing **Morning preheating by room** settings.
+
+During work/holiday return, living-room links qualify normally even while the house is empty, just like other ordinary rooms. Bathrooms linked exclusively to unused guest bedrooms retain their exclusion. Linked occupancy never triggers domestic hot water; that still uses the bathroom's own occupancy and DHW permissions.
+
+**Diagnostics:** generic `linked_rooms`, `linked_rooms_occupied` and `linked_rooms_calling_heat` attributes identify all linked room types; existing `linked_bedrooms*` attributes remain compatibility aliases. The new target reason is `linked_living_room_occupied`. TRV temperature compensation, PID, boiler relay timing, 60-second sensor-dropout protection, and read-only Hive/EMS cycle monitoring retain their existing implementations.
+
+Validation covers controller behaviour, configuration selection/save/clear/rename/delete, invalid links and the existing regression suite. These are isolated Home Assistant simulations; physical hardware behaviour has not been validated for this release.
+
+---
+
 # HeatFlow v0.7.16 — preserve heating through short Zigbee sensor interruptions
 
 HeatFlow now retains an **already-established heating request for up to 60 seconds** when a configured room temperature or window input becomes temporarily `unknown` or `unavailable`. This addresses the 17 November 2026 holiday-return incident: restarting Zigbee2MQTT at 11:22:59 briefly invalidated multiple room readings, causing a momentary drop in primary radiator demand. The boiler's normal five-minute minimum-off protection then unnecessarily delayed rewarming.

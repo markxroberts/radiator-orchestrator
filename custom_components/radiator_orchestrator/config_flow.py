@@ -170,7 +170,7 @@ class RadiatorOptionsFlow(config_entries.OptionsFlow):
                 "central": "Boiler settings",
                 "schedule": "Heating schedule and targets",
                 "presence": "House occupancy, holidays and preheating",
-                "linked_bathroom": "Link bathrooms to bedrooms",
+                "linked_bathroom": "Link bathrooms to rooms",
                 "morning_room": "Morning preheating by room",
                 "evening_bedroom": "Evening bedroom preheating",
                 "holiday_guest_bedrooms": "Guest bedrooms: return preheating",
@@ -223,7 +223,7 @@ class RadiatorOptionsFlow(config_entries.OptionsFlow):
             preserved = {k: v for k, v in rooms[self._selected].items() if k.startswith("linked_") or k.startswith("morning_") or k.startswith("evening_")}
             old_name = rooms[self._selected]["name"]
             rooms[self._selected] = {**preserved, **user_input}
-            # Linked-bedroom references use room names; update references on rename.
+            # Linked-room references use room names; update references on rename.
             if old_name != user_input["name"]:
                 for other in rooms:
                     if "linked_rooms" in other:
@@ -248,7 +248,7 @@ class RadiatorOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(step_id="remove_room",data_schema=vol.Schema({vol.Required("index"):selector.SelectSelector(selector.SelectSelectorConfig(options=[selector.SelectOptionDict(value=str(i),label=r["name"]) for i,r in enumerate(rooms)]))}))
 
     async def async_step_linked_bathroom(self, user_input=None):
-        """Select an existing bathroom to configure linked-bedroom behaviour."""
+        """Select an existing bathroom to configure linked-room behaviour."""
         bathrooms = [r for r in self._rooms if r.get("room_type") == "bathroom"]
         if not bathrooms:
             return self.async_abort(reason="no_bathrooms")
@@ -268,26 +268,26 @@ class RadiatorOptionsFlow(config_entries.OptionsFlow):
         bathroom = next((r for r in rooms if r["name"] == self._selected_bathroom), None)
         if bathroom is None:
             return self.async_abort(reason="no_bathrooms")
-        bedrooms = [r["name"] for r in rooms
-                    if r.get("room_type") == "bedroom" and r["name"] != bathroom["name"]]
+        linked_rooms = [r["name"] for r in rooms
+                    if r.get("room_type", "living") in ("bedroom", "living") and r["name"] != bathroom["name"]]
         if user_input is not None:
             names = user_input.get("linked_rooms", [])
-            if not isinstance(names, list) or any(n not in bedrooms for n in names):
+            if not isinstance(names, list) or any(n not in linked_rooms for n in names):
                 return self.async_show_form(step_id="linked_bathroom_details",
-                    data_schema=self._linked_bathroom_schema(bathroom, bedrooms),
+                    data_schema=self._linked_bathroom_schema(bathroom, linked_rooms),
                     errors={"base": "invalid_link"})
             # Keep unrelated room properties and existing room IDs unchanged.
             bathroom.update(user_input)
             bathroom["linked_rooms"] = names
             return self._save({CONF_ROOMS: rooms})
         return self.async_show_form(step_id="linked_bathroom_details",
-            data_schema=self._linked_bathroom_schema(bathroom, bedrooms))
+            data_schema=self._linked_bathroom_schema(bathroom, linked_rooms))
 
     @staticmethod
-    def _linked_bathroom_schema(room, bedrooms):
+    def _linked_bathroom_schema(room, linked_rooms):
         return vol.Schema({
             vol.Optional("linked_rooms", description={"suggested_value": room.get("linked_rooms", [])}):
-                selector.SelectSelector(selector.SelectSelectorConfig(options=bedrooms, multiple=True)),
+                selector.SelectSelector(selector.SelectSelectorConfig(options=linked_rooms, multiple=True)),
             vol.Required("linked_morning_preheat", default=room.get("linked_morning_preheat", False)): bool,
             vol.Required("linked_allow_morning_boiler", default=room.get("linked_allow_morning_boiler", False)): bool,
             vol.Required("linked_opportunistic", default=room.get("linked_opportunistic", True)): bool,
