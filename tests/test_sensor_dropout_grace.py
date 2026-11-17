@@ -1,10 +1,7 @@
 """Regressions for 60s Zigbee2MQTT room input dropout protection."""
-import asyncio
-from datetime import datetime
-from zoneinfo import ZoneInfo
+import importlib.util
+from pathlib import Path
 import pytest
-
-from conftest import State
 
 
 def prepare(house):
@@ -184,7 +181,12 @@ async def test_summer_off_beats_grace_during_holiday(house):
 
 
 def test_helper_deadline_and_fail_closed_conditions():
-    from radiator_orchestrator.demand_grace import retained_call_seconds
+    path = (Path(__file__).resolve().parents[1] / "custom_components"
+            / "radiator_orchestrator" / "demand_grace.py")
+    spec = importlib.util.spec_from_file_location("heatflow_demand_grace_isolated", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    retained_call_seconds = module.retained_call_seconds
     good = dict(
         was_calling=True,
         last_valid_at=100.0,
