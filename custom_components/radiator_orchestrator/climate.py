@@ -73,6 +73,7 @@ class RoomClimate(HeatFlowEntity, ClimateEntity):
                 "target_reason": self.room.target_reason,
                 "demand_reason": self.room.demand_reason,
                 "can_start_boiler_now": self.room.effective_primary,
+                "linked_rooms": list(self.room.conf.get("linked_rooms", [])),
                 "linked_bedrooms": list(self.room.conf.get("linked_rooms", []))}
 
     async def async_set_hvac_mode(self,hvac_mode):

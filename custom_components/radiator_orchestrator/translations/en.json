@@ -24,7 +24,7 @@
           "central": "Boiler settings",
           "schedule": "Heating schedule and targets",
           "presence": "House occupancy, holidays and preheating",
-          "linked_bathroom": "Link bathrooms to bedrooms",
+          "linked_bathroom": "Link bathrooms to rooms",
           "add_hot_water_room": "Add hot-water-only room",
           "morning_room": "Morning preheating by room",
           "holiday_guest_bedrooms": "Guest bedrooms: return preheating",
@@ -157,19 +157,19 @@
         }
       },
       "linked_bathroom": {
-        "title": "Select bathroom for bedroom links",
+        "title": "Select bathroom for room links",
         "data": {
           "name": "Bathroom"
         }
       },
       "linked_bathroom_details": {
-        "title": "Linked bedrooms and bathroom morning warming",
-        "description": "Select any number of bedrooms. Morning preparation uses your existing rising times and outdoor sensor. Bedroom motion sensors may remain off while people sleep, so house presence can be used as a fallback. Bathroom occupancy will still independently request hot water when configured.",
+        "title": "Linked rooms and bathroom morning warming",
+        "description": "Select bedrooms and/or living rooms. Occupied living rooms warm the bathroom to its scheduled target; bedrooms retain demand-based linking. Secondary bathrooms cannot start the boiler except during explicitly permitted morning warming. House-presence fallback applies only when bedroom links exist. Hot water still uses the bathroom’s own occupancy.",
         "data": {
-          "linked_rooms": "Linked bedrooms (multiple allowed)",
+          "linked_rooms": "Linked bedrooms or living rooms (multiple allowed)",
           "linked_morning_preheat": "Warm bathroom before scheduled rising time",
           "linked_allow_morning_boiler": "Bathroom may start boiler during morning warm-up",
-          "linked_opportunistic": "Warm bathroom while linked bedrooms call for heat",
+          "linked_opportunistic": "Warm with occupied living rooms or bedrooms calling for heat",
           "linked_house_presence_fallback": "Preheat if house occupied, even if bedroom motion is off",
           "linked_preheat_minutes": "Base bathroom preheat lead (minutes)",
           "linked_preheat_max_minutes": "Maximum bathroom preheat lead (minutes)",
@@ -255,7 +255,7 @@
     },
     "error": {
       "duplicate_room": "A room with this name already exists",
-      "invalid_link": "Select only existing bedroom rooms.",
+      "invalid_link": "Select only existing bedroom or living rooms.",
       "invalid_guest_bedrooms": "Select only existing bedrooms."
     },
     "abort": {

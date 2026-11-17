@@ -376,11 +376,12 @@ class HeatingController:
                 return False, "guest_occupancy_unavailable"
             return (True, "guest_occupied") if state.state == STATE_ON else (False, "guest_unoccupied")
         if conf.get("room_type") == "bathroom" and conf.get("linked_rooms"):
-            linked = [self.rooms[n] for n in conf["linked_rooms"]
-                      if n in self.rooms and self.rooms[n].conf.get("room_type") == "bedroom"]
+            linked = self._linked_rooms(room)
             if linked:
                 if any(self._return_preheat_room_authorisation(r)[0] for r in linked):
-                    return True, "linked_bedroom_qualifies"
+                    return True, ("linked_room_qualifies" if any(
+                        r.conf.get("room_type", "living") == "living" for r in linked)
+                        else "linked_bedroom_qualifies")
                 return False, "linked_guest_bedrooms_unoccupied"
         return True, "unrestricted"
 
@@ -638,16 +639,21 @@ class HeatingController:
         # evening if the configured earliest time is after rising.
         return earliest <= minute_now < rising
 
+    def _linked_rooms(self, room):
+        """Resolve only eligible links; stale names and bathroom cycles are ignored."""
+        return [self.rooms[n] for n in dict.fromkeys(room.conf.get("linked_rooms", []))
+                if n in self.rooms and n != room.conf["name"]
+                and self.rooms[n].conf.get("room_type", "living") in ("bedroom", "living")]
+
     def _linked_context(self, room, minute_now, outside):
-        """Compute linked bedroom presence and scheduled morning preparation.
+        """Compute linked room presence and scheduled morning preparation.
 
         A bedroom PIR is not a reliable sleeper detector. House presence can
         therefore authorise scheduled morning warming when explicitly enabled.
         Links are never a path around summer/holiday/window safety gates.
         """
         conf = room.conf
-        names = [n for n in conf.get("linked_rooms", []) if n in self.rooms
-                 and self.rooms[n].conf.get("room_type") == "bedroom" and n != conf["name"]]
+        names = [r.conf["name"] for r in self._linked_rooms(room)]
         if not names:
             return False, False, 0, "no_valid_links"
         room.linked_occupied = tuple(n for n in names if
@@ -658,14 +664,15 @@ class HeatingController:
         # An input_boolean in a linked bedroom is an explicit request to
         # preheat; while any such helper is configured, a false value must not
         # be bypassed by a generic house-presence fallback.
-        linked_booleans = [self.rooms[n].conf.get("occupancy") for n in names
+        bedrooms = [n for n in names if self.rooms[n].conf.get("room_type") == "bedroom"]
+        linked_booleans = [self.rooms[n].conf.get("occupancy") for n in bedrooms
                            if str(self.rooms[n].conf.get("occupancy", "")).startswith("input_boolean.")]
         linked_active = bool(room.linked_occupied)
         local_boolean = str(conf.get("occupancy", "")).startswith("input_boolean.")
         if local_boolean:
             authorised = self._enabled(conf.get("occupancy"))
         else:
-            authorised = linked_active or (not linked_booleans and bool(
+            authorised = linked_active or (bool(bedrooms) and not linked_booleans and bool(
                 conf.get("linked_house_presence_fallback", True)))
         authorised &= self.house_present and not self.away and not self.holiday_active and not self.summer
         target = self._bathroom_morning_target()
@@ -886,7 +893,7 @@ class HeatingController:
             self.preheating = holiday_preheat or work_preheat
             heat_allowed = not self.summer or self.away or self.holiday_active
             self.calibration_paused = False
-            # Read all room sensors first; evaluate linked bedrooms in a second
+            # Read all room sensors first; evaluate linked rooms in a second
             # pass so configuration order cannot affect bathroom decisions.
             outside = temperature(self.hass.states.get(self.settings.get("outdoor_temperature")))
             minute_now = now_local.hour * 60 + now_local.minute
@@ -1039,8 +1046,8 @@ class HeatingController:
                         room.effective_primary = True
                     nighttime = False
 
-                # A shared bathroom may link to several bedrooms. Any linked
-                # occupied bedroom qualifies; optionally house presence alone
+                # A shared bathroom may link to bedrooms and living rooms. Any linked
+                # occupied room qualifies; optionally house presence alone
                 # permits pre-rise heating (important for sleeping occupants).
                 if conf.get("room_type") == "bathroom" and conf.get("linked_rooms"):
                     pre, hold, _, _ = self._linked_context(room, minute_now, outside)
@@ -1115,28 +1122,32 @@ class HeatingController:
                     previous, nighttime = snapshots[room.conf["name"]]
                     self._update_room_demand(room, now, previous, nighttime)
 
-            # Bedrooms are evaluated before bathrooms, irrespective of the
+            # Linked source rooms are evaluated before bathrooms, irrespective of the
             # order in which the user created their rooms.
             for room in self.rooms.values():
                 conf = room.conf
                 if conf.get("room_type") != "bathroom":
                     continue
                 previous, nighttime = snapshots[conf["name"]]
-                linked = [self.rooms[n] for n in conf.get("linked_rooms", [])
-                          if n in self.rooms and self.rooms[n].conf.get("room_type") == "bedroom"]
+                linked = self._linked_rooms(room)
                 room.linked_heating = tuple(r.conf["name"] for r in linked if r.demand)
-                # Opportunistic heat uses the *scheduled* bathroom target only
-                # when a linked bedroom is already demanding heat. It never
-                # runs at night outside the authorised morning preheat window.
-                if (linked and room.linked_heating and conf.get("linked_opportunistic", True)
+                # Bedrooms retain demand-based linking. Living rooms qualify on
+                # actual occupancy even when already warm; no presence fallback.
+                living_occupied = any(r.conf.get("room_type", "living") == "living"
+                    and self._enabled(r.conf.get("occupancy")) for r in linked)
+                bedroom_heating = any(r.conf.get("room_type") == "bedroom"
+                                      and r.demand for r in linked)
+                if ((living_occupied or bedroom_heating) and conf.get("linked_opportunistic", True)
                         and self.house_present and not self.away and not self.holiday_active
                         and not self.summer and not nighttime
-                        and room.target_reason not in ("linked_morning_preheat", "linked_morning_hold")
+                        and room.target_reason not in ("linked_morning_preheat", "linked_morning_hold",
+                                                       "temporary_thermostat_override")
                         and room.target_reason not in ("room_occupied", "morning_room_preheat", "morning_room_hold")):
                     scheduled, _, _ = self._scheduled_target(room)
                     if scheduled > room.effective_target:
                         room.effective_target = scheduled
-                        room.target_reason = "opportunistic_linked_bedroom"
+                        room.target_reason = ("linked_living_room_occupied" if living_occupied
+                                              else "opportunistic_linked_bedroom")
                 self._update_room_demand(room, now, previous, nighttime)
 
             self.morning_preheating = any(
