@@ -1,3 +1,19 @@
+# HeatFlow v0.7.16 — preserve heating through short Zigbee sensor interruptions
+
+HeatFlow now retains an **already-established heating request for up to 60 seconds** when a configured room temperature or window input becomes temporarily `unknown` or `unavailable`. This addresses the 17 November 2026 holiday-return incident: restarting Zigbee2MQTT at 11:22:59 briefly invalidated multiple room readings, causing a momentary drop in primary radiator demand. The boiler's normal five-minute minimum-off protection then unnecessarily delayed rewarming.
+
+- **Existing calls only:** a room must already be calling for heat and have a valid temperature/window observation within the previous 60 seconds. Unavailable sensors on startup do not initiate a heating request; this grace state is not persisted.
+- **Immediate recovery:** when valid readings return, normal target/PID decisions resume immediately. If inputs remain missing after the grace period, heating for those rooms stops normally.
+- **Safety priorities:** an explicit room OFF, confirmed open window, Summer Heating Off, scheduled/holiday/occupancy target reduction, and nighttime protection continue to override grace immediately. No changes to the configured five-minute boiler relay minimum-on/off times.
+- **Diagnostics:** the room's **Heating Reason** reports `sensor dropout grace temperature unavailable` (or window input equivalent) while holding a call; attributes `sensor_dropout_grace_active`, `sensor_dropout_grace_reason`, and `sensor_dropout_grace_remaining_seconds` show why and how long. The diagnostic history records entry into and exit from grace.
+- **DHW unchanged:** no changes to domestic hot-water logic or to EMS/Hive commands beyond avoiding unnecessary ON→OFF transitions due solely to a brief sensor outage.
+
+The read-only CH cycle recorder introduced in v0.7.15 remains in place, including the event-loop callback fix. It captures burner firing durations with external temperature and radiator demand measurements, but does not control the boiler.
+
+**Version visibility:** v0.7.15 was already declared in the repository's integration `manifest.json`, but the README heading still displayed v0.7.14. This release updates both to **v0.7.16**. Home Assistant reports the version of the **installed manifest** after files are updated and Home Assistant restarts; HACS may display a commit hash instead of a semantic version when tracking a custom repository without matching GitHub release tags. Refresh the HACS repository, download the updated release/commit, restart HA, and check `/config/custom_components/radiator_orchestrator/manifest.json` if the integration page still says an older version.
+
+---
+
 # HeatFlow v0.7.14 — Home Assistant 2026.11 climate API compatibility
 
 Home Assistant 2026.11 renamed the temperature properties used by climate integrations and warns that the old names will stop working in 2027.11. HeatFlow's `RoomClimate` has been migrated to:
