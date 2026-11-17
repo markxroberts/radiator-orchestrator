@@ -263,6 +263,9 @@ class RoomReasonSensor(HeatFlowEntity, SensorEntity):
             "error_to_effective_target_c": (
                 round(room.effective_target - room.measured, 2) if room.measured is not None else None
             ),
+            "sensor_dropout_grace_reason": room.sensor_grace_reason,
+            "sensor_dropout_grace_remaining_seconds": room.sensor_grace_remaining_seconds,
+            "sensor_dropout_grace_active": bool(room.sensor_grace_reason),
             "scheduled_phase": room.schedule_phase,
             "early_occupancy_heating_enabled": bool(room.conf.get(
                 "early_occupancy_heating", room.conf.get("room_type", "living") in ("living", "bathroom"))),

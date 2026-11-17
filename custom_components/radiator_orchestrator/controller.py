@@ -15,6 +15,7 @@ from .pid import PID, clamp
 from .trv_compensation import read_trv_temperature, trv_boosted_setpoint
 from .dhw_logic import OccupancyHotWater
 from .ems_monitor import EMSMonitor
+from .demand_grace import retained_call_seconds
 from .linked_heating import morning_window, evening_window, preheat_allowance, preheat_authorisation
 
 _LOGGER = logging.getLogger(__name__)
@@ -69,6 +70,11 @@ class Room:
     last_occupancy_state: str | None = None
     holiday_return_authorisation: str = "not_in_return_window"
     work_return_authorisation: str = "not_in_work_return_window"
+    # Track only fully valid observations; never persist these across restarts.
+    last_valid_sensor_at: float | None = None
+    last_valid_sensor_target: float | None = None
+    sensor_grace_reason: str | None = None
+    sensor_grace_remaining_seconds: int = 0
 
 
 class HeatingController:
@@ -202,6 +208,7 @@ class HeatingController:
                 room.manual_override_target,
                 round(room.effective_target, 2),
                 room.demand,
+                room.sensor_grace_reason,
             )
         previous = self._diagnostic_snapshot
         self._diagnostic_snapshot = snapshot
@@ -222,6 +229,8 @@ class HeatingController:
                     "effective_primary": room.effective_primary,
                     "target_reason": room.target_reason,
                     "demand_reason": room.demand_reason,
+                    "sensor_grace_reason": room.sensor_grace_reason,
+                    "sensor_grace_remaining_seconds": room.sensor_grace_remaining_seconds,
                     "linked_occupied": list(room.linked_occupied),
                     "linked_heating": list(room.linked_heating),
                     "morning_preheat_status": room.morning_preheat_status,
@@ -844,6 +853,11 @@ class HeatingController:
             room.demand_reason = room.blocked_reason
             room.pid.reset()
             return
+        if room.sensor_grace_reason:
+            # Only reachable for a recently confirmed existing call.
+            # Never calculate PID with an unavailable measurement or reset it.
+            room.demand_reason = "sensor_dropout_grace_" + room.sensor_grace_reason
+            return
         error = room.effective_target - room.measured
         room.demand = error > (-0.25 if room.demand else 0.25)
         room.output = (room.pid.calculate(room.effective_target, room.measured, now-previous)
@@ -1052,14 +1066,48 @@ class HeatingController:
                     goal = room.manual_override_target
                     room.target_reason = "temporary_thermostat_override"
                 room.effective_target = goal
+                # An MQTT/Zigbee2MQTT restart can briefly make multiple room
+                # inputs unavailable simultaneously. Preserve only recently
+                # proven *existing* demand for 60s. Confirmed window-open,
+                # explicit room OFF, Summer OFF, target reduction and night
+                # safety conditions always take precedence.
+                window_missing = bool(conf.get("window")) and (
+                    window is None or window.state not in (STATE_ON, STATE_OFF)
+                )
+                temperature_missing = room.measured is None
+                room.sensor_grace_reason = None
+                room.sensor_grace_remaining_seconds = 0
                 if room.mode == "off" or not heat_allowed or (nighttime and not self.away and room.measured is not None and room.measured >= goal + 0.25):
                     room.blocked_reason = "off"
                 elif window is not None and window.state == STATE_ON:
                     room.blocked_reason = "window_open"
-                elif conf.get("window") and (window is None or window.state not in (STATE_ON, STATE_OFF)):
-                    room.blocked_reason = "window_unavailable"
-                elif room.measured is None:
-                    room.blocked_reason = "temperature_unavailable"
+                elif window_missing or temperature_missing:
+                    remaining = retained_call_seconds(
+                        was_calling=room.demand,
+                        last_valid_at=room.last_valid_sensor_at,
+                        last_valid_target=room.last_valid_sensor_target,
+                        current_target=goal,
+                        now=now,
+                        hard_blocked=self.summer or (nighttime and not holiday_return_active),
+                    )
+                    if remaining:
+                        if window_missing and temperature_missing:
+                            room.sensor_grace_reason = "temperature_and_window_unavailable"
+                        elif window_missing:
+                            room.sensor_grace_reason = "window_unavailable"
+                        else:
+                            room.sensor_grace_reason = "temperature_unavailable"
+                        room.sensor_grace_remaining_seconds = remaining
+                    else:
+                        room.blocked_reason = (
+                            "window_unavailable" if window_missing
+                            else "temperature_unavailable"
+                        )
+                else:
+                    # The last valid timestamp is updated only when both the
+                    # temperature and any configured window input are valid.
+                    room.last_valid_sensor_at = now
+                    room.last_valid_sensor_target = goal
                 snapshots[room.conf["name"]] = (previous, nighttime)
 
             for room in self.rooms.values():
