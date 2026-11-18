@@ -16,6 +16,21 @@ def central_schema(existing: dict | None = None):
         vol.Required(CONF_FROST, default=old.get(CONF_FROST, DEFAULT_FROST)): vol.All(vol.Coerce(float), vol.Range(min=4,max=18)),
         vol.Required(CONF_MIN_ON, default=old.get(CONF_MIN_ON, DEFAULT_MIN_ON)): vol.All(vol.Coerce(int),vol.Range(min=0,max=3600)),
         vol.Required(CONF_MIN_OFF, default=old.get(CONF_MIN_OFF, DEFAULT_MIN_OFF)): vol.All(vol.Coerce(int),vol.Range(min=0,max=3600)),
+        # Opt-in; existing installations keep their current boiler behaviour.
+        vol.Required("low_demand_cutoff_enabled",
+                     default=old.get("low_demand_cutoff_enabled", False)): bool,
+        vol.Required("low_demand_cutoff_c",
+                     default=old.get("low_demand_cutoff_c", 0.15)):
+            vol.All(vol.Coerce(float), vol.Range(min=0.05, max=0.4)),
+        vol.Required("low_demand_resume_c",
+                     default=old.get("low_demand_resume_c", 0.60)):
+            vol.All(vol.Coerce(float), vol.Range(min=0.5, max=1.5)),
+        vol.Required("low_demand_confirm_seconds",
+                     default=old.get("low_demand_confirm_seconds", 120)):
+            vol.All(vol.Coerce(int), vol.Range(min=30, max=600)),
+        vol.Required("low_demand_max_calling_rooms",
+                     default=old.get("low_demand_max_calling_rooms", 2)):
+            vol.All(vol.Coerce(int), vol.Range(min=1, max=4)),
     })
 
 
