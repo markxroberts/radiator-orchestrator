@@ -1,3 +1,27 @@
+# HeatFlow v0.7.18 — diagnose cycling and optionally reduce tiny-load boiler calls
+
+## More reliable CH/DHW cycle recorder (read-only)
+
+The EMS central-heating flag may turn ON after a burner ignition and OFF at shutdown. Previously the recorder classified many short, clearly heating-associated burns as `uncertain_CH_DHW` because it expected CH to be ON at ignition. Now it accumulates **positive CH and DHW evidence while the flame is actually burning**, ignores the CH-off state at shutdown for classification, and distinguishes `CH`, `DHW`, `mixed_CH_DHW`, and `uncertain_CH_DHW`. Missing DHW data remains uncertain rather than claiming CH-only. A `classification_reason` explains each result.
+
+The original **Last CH Burner Cycle Duration** sensor now retains the *last confirmed CH* duration even if more recent burns are uncertain or DHW-only. Its attributes include the last cycle, last confirmed CH cycle, counts by type since integration reload and the three most recent cycle records. New recorder-friendly sensors (under HeatFlow Controller) are **Last CH Peak Flow Temperature**, **Last CH Minimum Observed Burner Modulation** and **Last CH Flow Rise During Firing**. Individual cycles also report peak flow, minimum and maximum observed nonzero burner modulation, plus the number of calling TRVs whose requested setpoint exceeds their internal sensed temperature by more than 0.5°C.
+
+**Interpretation limits:** A TRV's requested setpoint is *not* its actual valve opening. Burner modulation % is *not* minimum boiler output in kW, and flow temperature rise is *not* boiler flow-minus-return ΔT. The actual return temperature is not available on this installation; no calculation assumes it. Cycle history remains in memory (20 records) and resets on integration reload. Do not interpret a small number of confirmed cycles as exhaustive measurement without first checking the uncertainty counts.
+
+## Optional low-demand boiler cutoff
+
+Under **Settings → Devices & services → HeatFlow → Configure → Boiler settings**, a new **Enable low-demand boiler cutoff** option is **OFF by default**. This is an experimental optimisation for periods when one or two radiators remain technically calling despite being practically at target.
+
+When enabled, **all** of the following must hold before HeatFlow drops the boiler call: no more than 2 calling radiators, no room more than **0.15°C** below its effective target, combined positive deficit at most **0.30°C**, and these conditions continuously confirmed for **120 seconds**. The ordinary minimum-on relay timer still applies. After stopping, demand must increase to at least **0.60°C** in any room or in total, or exceed the configured calling-room limit, before the boiler call is permitted again. These thresholds and confirmation period can be adjusted in Boiler settings.
+
+The cutoff **never** overrides a room's individual PID settings or creates heat demand. It is bypassed during holiday/work return, morning/evening preheating and warm-up holds, explicit room temperature overrides, sensor dropout grace and invalid temperature readings. Confirmed window-open, room OFF, Summer Off, scheduled setback and existing minimum-on/off protection continue to take precedence. Domestic hot water remains independent. The new **Low Demand Boiler Call Status** diagnostic entity reports whether the gate is disabled, confirming, suppressing, or protecting a comfort call, with deficit and timer attributes.
+
+For initial evaluation, **leave the cutoff disabled** for a few days while checking the newly corrected CH diagnostics. If enabling it, compare starts per hour and actual room temperatures before/after. If rooms cool too far or demand resumes too slowly, turn it off and adjust thresholds conservatively. This deliberately does **not** change the EMS selected flow temperature (currently 75°C), the selected burner-power limits, pump settings, or the Hive on-demand temperature.
+
+**Upgrade:** Install v0.7.18 via HACS and restart Home Assistant; verify that the installed `manifest.json` shows `0.7.18`. It introduces additional sensor entities and preserves existing diagnostic entity IDs and previously configured settings. Changes were exercised in isolated automated tests, not a physical boiler test.
+
+---
+
 # HeatFlow v0.7.17 — link bathrooms to occupied living rooms
 
 Bathrooms can now link to any combination of **bedrooms and living rooms**, including kitchen, dining room and study configurations with room type **living**. Existing bedroom links and saved settings need no migration.

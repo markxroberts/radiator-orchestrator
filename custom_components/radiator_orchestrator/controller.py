@@ -15,6 +15,7 @@ from .pid import PID, clamp
 from .trv_compensation import read_trv_temperature, trv_boosted_setpoint
 from .dhw_logic import OccupancyHotWater
 from .ems_monitor import EMSMonitor
+from .low_demand import LowDemandGate
 from .demand_grace import retained_call_seconds
 from .linked_heating import morning_window, evening_window, preheat_allowance, preheat_authorisation
 
@@ -83,6 +84,8 @@ class HeatingController:
         self.entry = entry
         self.settings = settings
         self.ems = EMSMonitor(settings)
+        self.low_demand = LowDemandGate()
+        self.low_demand_raw_request = False
         self.rooms = {x["name"]: Room(x, PID(x["kp"],x["ki"],x["kd"])) for x in settings.get(CONF_ROOMS,[]) if x.get("room_type") != "hot_water_only"}
         self.hot_water_rooms = [x for x in settings.get(CONF_ROOMS, []) if x.get("room_type") == "hot_water_only"]
         self.learning = {}
@@ -177,6 +180,8 @@ class HeatingController:
             "holiday_return_holding": self.holiday_return_holding,
             "holiday_return_status": self.holiday_return_status,
             "boiler_requested": self.boiler_requested,
+            "low_demand_status": self.low_demand.status,
+            "low_demand_suppressed": self.low_demand.suppressed,
             "boiler_requesting_rooms": tuple(name for name, room in self.rooms.items()
                                               if room.demand and room.effective_primary),
             "boiler_on": self.boiler_on,
@@ -1158,7 +1163,19 @@ class HeatingController:
                 r.target_reason == "evening_bedroom_preheat"
                 for r in self.rooms.values()
             )
-            any_primary = any(r.demand and r.effective_primary for r in self.rooms.values())
+            raw_primary = any(r.demand and r.effective_primary for r in self.rooms.values())
+            self.low_demand_raw_request = raw_primary
+            # This optional gate never modifies individual room PID decisions.
+            # Protect holiday, work and room-specific preheating/comfort holds,
+            # manual overrides and any unavailable Zigbee sensor inputs.
+            any_primary = self.low_demand.evaluate(
+                self.rooms.values(), self.settings, now,
+                raw_request=raw_primary,
+                protected_comfort=(
+                    self.preheating or holiday_return_active
+                    or self.morning_preheating or self.evening_preheating
+                ),
+            )
             self.boiler_requested = any_primary
             for room in self.rooms.values():
                 self._observe_heating(room, now, outside)

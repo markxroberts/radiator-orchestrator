@@ -17,6 +17,10 @@ async def async_setup_entry(hass, entry, async_add_entities):
     )]
     entities.extend(RoomDemandNumericSensor(ctrl, key) for key in ("active", "primary", "weighted"))
     entities.append(CHCycleLastDurationSensor(ctrl))
+    entities.extend(CHCycleObservationSensor(ctrl, key) for key in (
+        "peak_flow_c", "min_observed_burner_power_pct", "observed_flow_rise_c"
+    ))
+    entities.append(LowDemandStatusSensor(ctrl))
     entities.append(DiagnosticHistorySensor(ctrl))
     entities.append(WorkReturnPreheatStatusSensor(ctrl))
     entities.extend(CycleTelemetrySensor(ctrl, key) for key in CYCLE_FIELDS)
@@ -78,7 +82,7 @@ class RoomDemandNumericSensor(HeatFlowEntity, SensorEntity):
 
 
 class CHCycleLastDurationSensor(HeatFlowEntity, SensorEntity):
-    """Last completed burner cycle, with CH/DHW uncertainty explicitly labelled."""
+    """Last confirmed CH burner duration; uncertain cycles do not erase it."""
     _attr_should_poll = False
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -95,18 +99,102 @@ class CHCycleLastDurationSensor(HeatFlowEntity, SensorEntity):
 
     @property
     def native_value(self):
-        last = self.ctrl.ch_cycle_recorder.last
-        return last["duration_seconds"] if last and last["classification"] == "CH" else None
+        last = self.ctrl.ch_cycle_recorder.last_confirmed_ch
+        return last["duration_seconds"] if last else None
 
     @property
     def extra_state_attributes(self):
         monitor = self.ctrl.ch_cycle_recorder
         return {
             "last_cycle": monitor.last,
-            "recent_cycles": list(monitor.recent)[-5:],
+            "last_confirmed_ch_cycle": monitor.last_confirmed_ch,
+            "recent_cycles": list(monitor.recent)[-3:],
             "completed_since_reload": monitor.completed,
-            "classification_note": "CH requires EMS CH=on and DHW=off throughout observed firing",
+            "confirmed_ch_since_reload": monitor.confirmed_ch_cycles,
+            "uncertain_since_reload": monitor.uncertain_cycles,
+            "dhw_or_mixed_since_reload": monitor.dhw_cycles,
+            "classification_note": "Positive CH evidence during firing, no DHW firing evidence",
             "monitoring_mode": "read_only",
+        }
+
+
+class CHCycleObservationSensor(HeatFlowEntity, SensorEntity):
+    """Recorder-friendly CH combustion and flow observations, not kW."""
+    _attr_should_poll = False
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, ctrl, key):
+        self.ctrl, self.key = ctrl, key
+        specs = {
+            "peak_flow_c": ("Last CH Peak Flow Temperature", "°C", "mdi:thermometer-high"),
+            "min_observed_burner_power_pct": (
+                "Last CH Minimum Observed Burner Modulation", "%", "mdi:fire"),
+            "observed_flow_rise_c": ("Last CH Flow Rise During Firing", "°C", "mdi:thermometer-lines"),
+        }
+        name, unit, icon = specs[key]
+        self._attr_name = name
+        self._attr_unique_id = f"{ctrl.entry.entry_id}_ch_cycle_{key}"
+        self._attr_native_unit_of_measurement = unit
+        self._attr_icon = icon
+        if key == "peak_flow_c":
+            self._attr_device_class = SensorDeviceClass.TEMPERATURE
+
+    async def async_added_to_hass(self):
+        self.async_on_remove(self.ctrl.ch_cycle_recorder.subscribe(self.async_write_ha_state))
+
+    @property
+    def native_value(self):
+        ch = self.ctrl.ch_cycle_recorder.last_confirmed_ch
+        return ch.get(self.key) if ch else None
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "monitoring_mode": "read_only",
+            "note": (
+                "Modulation percent is not a measured minimum burner output in kW"
+                if self.key == "min_observed_burner_power_pct"
+                else "Flow change is NOT flow-return temperature difference"
+            ),
+        }
+
+
+class LowDemandStatusSensor(HeatFlowEntity, SensorEntity):
+    """Explain the opt-in small-load heat-call gate."""
+    _attr_should_poll = False
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:radiator-disabled"
+
+    def __init__(self, ctrl):
+        self.ctrl = ctrl
+        self._attr_name = "Low Demand Boiler Call Status"
+        self._attr_unique_id = f"{ctrl.entry.entry_id}_low_demand_status"
+
+    async def async_added_to_hass(self):
+        self.async_on_remove(self.ctrl.subscribe(self.async_write_ha_state))
+
+    @property
+    def native_value(self):
+        return self.ctrl.low_demand.status
+
+    @property
+    def extra_state_attributes(self):
+        monitor = self.ctrl.low_demand
+        return {
+            "enabled": bool(self.ctrl.settings.get("low_demand_cutoff_enabled", False)),
+            "suppressed": monitor.suppressed,
+            "raw_primary_demand": self.ctrl.low_demand_raw_request,
+            "boiler_request_after_gate": self.ctrl.boiler_requested,
+            "calling_rooms": monitor.calling_rooms,
+            "max_positive_deficit_c": monitor.max_deficit_c,
+            "total_positive_deficit_c": monitor.total_deficit_c,
+            "confirmation_remaining_seconds": monitor.remaining_seconds,
+            "configured_cutoff_c": self.ctrl.settings.get("low_demand_cutoff_c", 0.15),
+            "configured_resume_c": self.ctrl.settings.get("low_demand_resume_c", 0.60),
+            "configured_confirm_seconds": self.ctrl.settings.get("low_demand_confirm_seconds", 120),
+            "configured_max_calling_rooms": self.ctrl.settings.get("low_demand_max_calling_rooms", 2),
+            "diagnostic_only_when_disabled": True,
         }
 
 
