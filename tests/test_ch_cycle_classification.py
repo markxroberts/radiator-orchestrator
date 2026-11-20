@@ -68,7 +68,7 @@ def test_uncertain_cycle_does_not_erase_last_confirmed_ch(house):
     assert rec.last_confirmed_ch is previous
     assert rec.uncertain_cycles == 1
     assert rec.last["classification_reason"] == (
-        "neither_CH_nor_DHW_active_confirmed_during_firing")
+        "neither_CH_nor_DHW_evidence_observed")
 
 
 def test_dhw_only_and_mixed_cycles_are_not_confirmed_ch(house):
