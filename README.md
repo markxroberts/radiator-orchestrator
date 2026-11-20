@@ -1,3 +1,27 @@
+# HeatFlow v0.7.19 — CH burner-aware cutoff, multi-source DHW diagnosis and performance tracking
+
+**This release improves cycle diagnostics and the optional low-demand optimisation; it does not change the selected EMS flow temperature (75°C), burner output limits, pump settings or DHW control.**
+
+## Burner-aware low-demand cutoff
+
+Where the low-demand cutoff is already enabled, the controller now prefers to wait for an **active, EMS-confirmed CH burner firing** to finish before removing the heating request, with a **maximum 180-second additional wait** after the low-demand confirmation. The maximum is configurable (0–300 seconds) in **HeatFlow → Configure → Boiler settings**; use 0 to restore immediate suppression after the original 120-second low-demand confirmation. The hold is *not* applied when flame/CH evidence is missing or DHW activity is observed, nor if a room is turned off, its window opens, or demand disappears. Holiday/work return, evening/morning warmups, valid comfort requests, and Zigbee sensor-loss grace still take priority. Normal boiler min-on/min-off relay protection remains unchanged.
+
+**Low Demand Boiler Call Status** now reports the remaining burner hold, a bounded count of burner-finish deferrals, number of actual suppression episodes and suppressed heating-request minutes since reload. These are observations; we cannot directly count counterfactual 'avoided' burner starts. Once the flame ends naturally, an established low-demand condition can suppress the next requested firing. The extra wait has a hard cap to avoid sustaining a boiler call indefinitely when emitters cannot absorb heat.
+
+## More independent CH/DHW evidence
+
+The event recorder compares its existing CH/DHW-active flags with **DHW charging**, the **DHW three-way valve**, and the **CH, DHW and total burner starts counters**. Those are useful on the Worcester Bosch installation because `binary_sensor.boiler_dhw_active` can stay OFF even while the DHW-start counter increases. Counter increments observed around a flame cycle are stored alongside the raw flags and the classification reason. Conflicting evidence is reported **uncertain_CH_DHW** rather than misclassified as CH-only. Counter updates can lag the burner, so per-cycle classification remains diagnostic, not a direct proof of the cause of every start.
+
+## Demand-normalised performance
+
+**CH Starts per HeatFlow Demand Hour** is a new numeric diagnostic entity. It divides the EMS CH starts-counter increase since the integration reload by hours of actual HeatFlow requested heating (not clock time), after at least ten minutes of observed demand. Its attributes include CH/DHW starts since reload, heating-request hours, relay-on hours, short-CH-cycle count, median and p90 durations of recent confirmed CH cycles, median peak flow and initial demand, as well as low-load suppression counts, deferrals and minutes.
+
+All of these metrics reset on reloading HeatFlow; recent per-cycle measures are bounded to 20 completions. They do not estimate radiator kW or boiler flow-return temperature difference, because those are not directly measured. Recorder will retain its ordinary numeric sensor history over Home Assistant restarts.
+
+**Installation:** Update HeatFlow via HACS to **v0.7.19**, restart Home Assistant and check the Low Demand Boiler Call Status and CH Starts per HeatFlow Demand Hour entities. Since the low-demand cutoff is already enabled in the observed installation, its state remains enabled after updating; watch for excessive room-temperature drop or rapidly repeated CH burns and disable the cutoff if comfort worsens. The boiler-facing changes have regression tests but have not been validated against the physical boiler.
+
+---
+
 # HeatFlow v0.7.18 — diagnose cycling and optionally reduce tiny-load boiler calls
 
 ## More reliable CH/DHW cycle recorder (read-only)
