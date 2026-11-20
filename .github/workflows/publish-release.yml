@@ -1,0 +1,59 @@
+name: Publish HeatFlow GitHub release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - custom_components/radiator_orchestrator/manifest.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact release commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Read and validate integration version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(python -c 'import json; from pathlib import Path; print(json.loads(Path("custom_components/radiator_orchestrator/manifest.json").read_text())["version"])')
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid integration semantic version: $VERSION" >&2
+            exit 1
+          fi
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          test -s RELEASE_NOTES.md
+          grep -q "HeatFlow v$VERSION" RELEASE_NOTES.md
+      - name: Create immutable tag and GitHub release if needed
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git fetch --tags origin
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already published; nothing to do"
+            exit 0
+          fi
+          if git show-ref --verify --quiet "refs/tags/$TAG"; then
+            TAG_SHA="$(git rev-list -n 1 "$TAG")"
+            if [ "$TAG_SHA" != "$GITHUB_SHA" ]; then
+              echo "Existing tag $TAG points to $TAG_SHA, not release commit $GITHUB_SHA" >&2
+              exit 1
+            fi
+          else
+            git tag "$TAG" "$GITHUB_SHA"
+            git push origin "$TAG"
+          fi
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "HeatFlow $TAG" \
+            --notes-file RELEASE_NOTES.md \
+            --verify-tag
