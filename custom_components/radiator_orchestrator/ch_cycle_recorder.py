@@ -244,7 +244,7 @@ class CHCycleRecorder:
                     "samples": 0,
                 },
             }
-            if getattr(self.ctrl.low_demand, "suppressed", False):
+            if getattr(getattr(self.ctrl, "low_demand", None), "suppressed", False):
                 self.ch_fires_while_suppressed += 1
         if flame == 1 and self.active is not None:
             self._observe_firing(sample)
