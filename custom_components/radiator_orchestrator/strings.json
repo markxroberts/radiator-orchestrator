@@ -14,7 +14,8 @@
           "low_demand_cutoff_c": "Near-target cutoff threshold per calling room (°C)",
           "low_demand_resume_c": "Resume heating above deficit (°C)",
           "low_demand_confirm_seconds": "Confirm low demand before stopping (seconds)",
-          "low_demand_max_calling_rooms": "Maximum calling rooms for cutoff"
+          "low_demand_max_calling_rooms": "Maximum calling rooms for cutoff",
+          "low_demand_max_burner_wait_seconds": "Maximum extra wait for an active CH burner to finish (seconds; 0 disables)"
         }
       }
     }
@@ -106,9 +107,10 @@
           "low_demand_cutoff_c": "Near-target cutoff threshold per calling room (°C)",
           "low_demand_resume_c": "Resume heating above deficit (°C)",
           "low_demand_confirm_seconds": "Confirm low demand before stopping (seconds)",
-          "low_demand_max_calling_rooms": "Maximum calling rooms for cutoff"
+          "low_demand_max_calling_rooms": "Maximum calling rooms for cutoff",
+          "low_demand_max_burner_wait_seconds": "Maximum extra wait for an active CH burner to finish (seconds; 0 disables)"
         },
-        "description": "Optional low-demand cutoff is off by default. Enables only after 120 seconds of negligible, valid radiator demand; has independent hysteresis, while existing anti-cycle timing and preheat protections remain. EMS settings are read-only."
+        "description": "Optional low-demand cutoff is off by default. When enabled, it respects normal min-on/off limits and may briefly wait for a confirmed CH flame to finish before suppressing an otherwise negligible heating request; the wait is bounded and cannot override window, room-off or comfort safeguards. No EMS settings are changed."
       },
       "schedule": {
         "title": "Heating schedule and target helpers",

@@ -16,6 +16,7 @@ from .trv_compensation import read_trv_temperature, trv_boosted_setpoint
 from .dhw_logic import OccupancyHotWater
 from .ems_monitor import EMSMonitor
 from .low_demand import LowDemandGate
+from .cycle_monitor import cycle_source, binary_state
 from .demand_grace import retained_call_seconds
 from .linked_heating import morning_window, evening_window, preheat_allowance, preheat_authorisation
 
@@ -284,6 +285,11 @@ class HeatingController:
         return lambda: self.listeners.remove(callback) if callback in self.listeners else None
 
     def publish(self):
+        recorder = getattr(self, "ch_cycle_recorder", None)
+        if recorder is not None:
+            # Track actual elapsed HeatFlow request/relay time for the
+            # recorder's starts-per-demand-hour denominator. Read-only.
+            recorder.observe_controller()
         for callback in tuple(self.listeners):
             callback()
 
@@ -1168,6 +1174,18 @@ class HeatingController:
             # This optional gate never modifies individual room PID decisions.
             # Protect holiday, work and room-specific preheating/comfort holds,
             # manual overrides and any unavailable Zigbee sensor inputs.
+            burner_id = cycle_source(self.settings, self.ems.sources, "ems_burner")
+            ems_ch_id = cycle_source(self.settings, self.ems.sources, "ems_ch")
+            ems_dhw_id = cycle_source(self.settings, self.ems.sources, "ems_dhw")
+            burner_firing = binary_state(self.hass.states.get(burner_id)) == 1 if burner_id else False
+            ch_active = binary_state(self.hass.states.get(ems_ch_id)) == 1 if ems_ch_id else False
+            dhw_active = any(
+                binary_state(self.hass.states.get(entity_id)) == 1
+                for entity_id in (
+                    ems_dhw_id, "binary_sensor.boiler_dhw_charging",
+                    "binary_sensor.boiler_dhw_3wayvalve",
+                ) if entity_id
+            )
             any_primary = self.low_demand.evaluate(
                 self.rooms.values(), self.settings, now,
                 raw_request=raw_primary,
@@ -1175,6 +1193,8 @@ class HeatingController:
                     self.preheating or holiday_return_active
                     or self.morning_preheating or self.evening_preheating
                 ),
+                burner_firing=burner_firing, ch_active=ch_active,
+                dhw_active=dhw_active,
             )
             self.boiler_requested = any_primary
             for room in self.rooms.values():

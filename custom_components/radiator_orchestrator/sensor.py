@@ -17,6 +17,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     )]
     entities.extend(RoomDemandNumericSensor(ctrl, key) for key in ("active", "primary", "weighted"))
     entities.append(CHCycleLastDurationSensor(ctrl))
+    entities.append(CHCyclePerformanceSensor(ctrl))
     entities.extend(CHCycleObservationSensor(ctrl, key) for key in (
         "peak_flow_c", "min_observed_burner_power_pct", "observed_flow_rise_c"
     ))
@@ -113,7 +114,7 @@ class CHCycleLastDurationSensor(HeatFlowEntity, SensorEntity):
             "confirmed_ch_since_reload": monitor.confirmed_ch_cycles,
             "uncertain_since_reload": monitor.uncertain_cycles,
             "dhw_or_mixed_since_reload": monitor.dhw_cycles,
-            "classification_note": "Positive CH evidence during firing, no DHW firing evidence",
+            "classification_note": "CH/DHW charging and valve flags cross-checked against CH/DHW starts counters; conflicts remain uncertain",
             "monitoring_mode": "read_only",
         }
 
@@ -194,7 +195,55 @@ class LowDemandStatusSensor(HeatFlowEntity, SensorEntity):
             "configured_resume_c": self.ctrl.settings.get("low_demand_resume_c", 0.60),
             "configured_confirm_seconds": self.ctrl.settings.get("low_demand_confirm_seconds", 120),
             "configured_max_calling_rooms": self.ctrl.settings.get("low_demand_max_calling_rooms", 2),
-            "diagnostic_only_when_disabled": True,
+            "configured_max_burner_wait_seconds": self.ctrl.settings.get("low_demand_max_burner_wait_seconds", 180),
+            "burner_wait_remaining_seconds": monitor.burner_wait_remaining_seconds,
+            "burner_deferral_events_since_reload": monitor.burner_deferral_events,
+            "suppression_events_since_reload": monitor.suppression_events,
+            "suppressed_minutes_since_reload": round(monitor.suppressed_seconds() / 60, 1),
+            "avoided_starts_estimate": None,
+            "avoided_starts_note": "Suppression is observable; counterfactual starts avoided are not.",
+        }
+
+
+class CHCyclePerformanceSensor(HeatFlowEntity, SensorEntity):
+    """CH starts per real HeatFlow demand-hour, with supporting diagnostics.
+
+    State is intentionally unavailable until ten observed demand minutes.
+    Aggregation resets on an integration reload; users can record the state in
+    Recorder for longer-run comparisons. It is NOT a 24-hour rolling average.
+    """
+    _attr_should_poll = False
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "starts/h"
+    _attr_icon = "mdi:chart-timeline-variant"
+
+    def __init__(self, ctrl):
+        self.ctrl = ctrl
+        self._attr_name = "CH Starts per HeatFlow Demand Hour"
+        self._attr_unique_id = f"{ctrl.entry.entry_id}_ch_starts_per_demand_hour"
+
+    async def async_added_to_hass(self):
+        self.async_on_remove(self.ctrl.subscribe(self.async_write_ha_state))
+        self.async_on_remove(
+            self.ctrl.ch_cycle_recorder.subscribe(self.async_write_ha_state)
+        )
+
+    @property
+    def native_value(self):
+        return self.ctrl.ch_cycle_recorder.performance()[
+            "observed_CH_starts_per_demand_hour"
+        ]
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            **self.ctrl.ch_cycle_recorder.performance(),
+            "monitoring_mode": "read_only",
+            "normalisation": "boiler CH start-counter increments / recorded hours HeatFlow requested heating",
+            "sampling_limit": "Counts may lag; ignores intervals without valid HA controller sampling",
+            "thermal_power_kW_available": False,
+            "boiler_return_temperature_available": False,
         }
 
 

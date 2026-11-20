@@ -31,6 +31,9 @@ def central_schema(existing: dict | None = None):
         vol.Required("low_demand_max_calling_rooms",
                      default=old.get("low_demand_max_calling_rooms", 2)):
             vol.All(vol.Coerce(int), vol.Range(min=1, max=4)),
+        vol.Required("low_demand_max_burner_wait_seconds",
+                     default=old.get("low_demand_max_burner_wait_seconds", 180)):
+            vol.All(vol.Coerce(int), vol.Range(min=0, max=300)),
     })
 
 
