@@ -1,76 +1,21 @@
-# HeatFlow v0.7.19 — burner-aware low-load heating and trustworthy cycling diagnostics
+# HeatFlow v0.7.20
 
-This release builds on v0.7.18 without modifying EMS-ESP flow-temperature,
-burner-power or pump settings.
+## CH/DHW classification
 
-## CH burner-aware low-demand cutoff
+Isolated DHW three-way-valve activity no longer proves DHW firing or turns a CH cycle into mixed_CH_DHW. Valve activity remains in `firing_evidence.dhw_valve_on` and start/end snapshots. Independent DHW-active/charging evidence and start counters retain their existing roles; missing independent signals and counter conflicts remain uncertain. Asynchronous counters can still lag a cycle; these are observations, not definitive hydraulic diagnoses.
 
-When **Enable low-demand boiler cutoff** is already enabled, HeatFlow now
-prefers to stop an unnecessary CH call **after the current confirmed CH burner
-firing period ends**, rather than cutting the flame short immediately when
-the 120-second small-load confirmation expires. A strict configurable
-**maximum extra wait**, default **180 seconds**, prevents indefinite firing;
-set it to **0** to disable the extra wait. Missing flame/CH evidence or active
-DHW charging does not extend the heating call. Confirmed open windows, room
-OFF, a genuine lost demand, Summer Off, unavailable-sensor precautions and
-preheating/comfort safeguards still take priority. The existing 300-second
-minimum-on/off relay protection remains in force.
+## Experimental selected CH flow temperature
 
-The existing **Low Demand Boiler Call Status** sensor now reports
-`waiting_for_ch_burner_to_finish`, the remaining maximum wait, total
-suppression periods, CH-burner deferrals and minutes for which the controller
-has suppressed an otherwise-present small-load CH request. These are
-**observations, not a numerical claim of avoided starts or energy savings**.
+Disabled by default. No entity is automatically selected. Existing heating, DHW, relay minimum-on/off and boiler protections are unchanged.
 
-## Multiple independent DHW signals
+After explicitly selecting the EMS-ESP selected CH temperature number, HeatFlow captures its current setting (normally 75°C) as the baseline. One or two calling **primary** radiators request 65°C; three or four request 70°C; five or more request the captured baseline. Targets never exceed the captured baseline. Secondary radiators are excluded from the count. This is room demand, not measured valve position or radiator output.
 
-CH/DHW cycle diagnostics now combine the EMS CH and DHW-active flags with
-`binary_sensor.boiler_dhw_charging`,
-`binary_sensor.boiler_dhw_3wayvalve`, and the cumulative
-`sensor.boiler_heatstarts`, `sensor.boiler_dhw_starts` and
-`sensor.boiler_burnstarts` counters, when available.
+Reductions require three minutes of stable demand and at least ten minutes since the last write. Increases and fallback to baseline take priority. Holiday/work-return, morning/evening preheat and comfort holds, manual overrides, sensor loss/grace, deficits of at least 1°C, no demand and missing flow observations prevent reduction. At observed flow ≥85°C the experiment stops and attempts baseline restoration; this is not a boiler safety cutoff.
 
-This particularly addresses the observed situation where
-`binary_sensor.boiler_dhw_active` remains OFF while the boiler's DHW
-start counter advances. If a cycle's independent evidence conflicts
-(for example a DHW counter increment accompanied by apparently pure CH
-flags), HeatFlow explicitly records `uncertain_CH_DHW` instead of
-silently declaring a confirmed CH firing. Counters can lag individual
-burner transitions, so the per-cycle counter increments are best treated as
-corroborating observations, not absolute proof. Existing historical
-classifications and counter histories are not rewritten. The last
-**confirmed** CH duration still persists across uncertain/DHW cycles.
+DHW-active, charging and valve signals must all be known OFF and HeatFlow must have no hot-water request before any write, including restoration. Unavailable selected entities, invalid bounds/step/units and failed readback prevent continuing modulation. Each write has a bounded acknowledgement wait, with no resend loop. External changes relinquish ownership. Persistent ownership records support restart recovery without adopting a reduced baseline. Disable, unload and clean shutdown restore the baseline only while still owned and safe; DHW/unavailability defer restoration until a later evaluation or restart. A failed restoration is not retried automatically, including across restart, and needs manual checking. A timed-out command retains its journal for possible late acknowledgement.
 
-## Demand-normalised performance
+**Activation:** Install v0.7.20 through HACS, restart Home Assistant, then open HeatFlow → Configure → Boiler settings. Select `number.boiler_selflowtemp` only after confirming it is the EMS-ESP **selected central-heating flow temperature**, then enable experimental CH flow temperature modulation. Verify its current baseline first; a validated Celsius baseline between 60 and 85 is required. Do not select a DHW temperature, power limit or pump setting. No automatic activation occurs on upgrade.
 
-A new **CH Starts per HeatFlow Demand Hour** diagnostic measurement records
-the boiler CH start-counter increase divided by the elapsed hours during
-which HeatFlow requested heating (minimum ten recorded demand minutes).
-Its attributes include:
+**Observe:** Experimental CH Flow Temperature exposes status, requested setpoint, actual readback, observed flow, captured baseline, ownership and fault separately. Compare with CH Starts per HeatFlow Demand Hour, confirmed CH durations/peaks and room comfort. Lower flow temperature can worsen cycling with too few emitters; no efficiency or cycling improvement is assumed. Disable the experiment if results worsen and verify baseline restoration. If a fault reports manual action, inspect the actual selected temperature and restore the recorded baseline manually when safe; do not repeatedly toggle/reload to force commands.
 
-- CH and DHW start-counter increments since integration reload;
-- observed HeatFlow heating-request hours and relay-ON hours;
-- confirmed/uncertain/DHW classifications since reload;
-- median and 90th-percentile durations for recent confirmed CH cycles,
-  the number shorter than two minutes, median peak flow temperature and
-  median initial radiator demand proxy;
-- low-demand suppression events, burner deferrals, suppressed minutes and
-  burner starts observed while suppression was active.
-
-This summary is **since integration reload**, not a rolling 24-hour metric,
-and requires time to accumulate after restarting Home Assistant.
-The recent-cycle statistics cover at most 20 completed cycles. Individual
-start counters may lag; the 'starts per hour' rate is a diagnostic estimate,
-not a billing or efficiency measurement. No return-temperature entity or
-actual radiator valve-opening feedback is assumed to exist.
-
-## Upgrade
-
-Install **v0.7.19** from HACS and restart Home Assistant. Existing
-settings are preserved: the low-demand cutoff remains at its previous
-enabled/disabled setting, and the extra wait defaults to 180 seconds
-when enabled. Review Boiler settings if you prefer 0 seconds or a
-shorter limit. New diagnostics will start collecting at restart.
-
-This version was tested with isolated Home Assistant stubs and CI.
-Live boiler testing and a longer before/after evaluation are still needed.
+239 isolated automated tests pass, plus compilation and JSON validation. No physical-boiler validation or live setting changes were performed during repository work.

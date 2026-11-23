@@ -16,6 +16,8 @@ def central_schema(existing: dict | None = None):
         vol.Required(CONF_FROST, default=old.get(CONF_FROST, DEFAULT_FROST)): vol.All(vol.Coerce(float), vol.Range(min=4,max=18)),
         vol.Required(CONF_MIN_ON, default=old.get(CONF_MIN_ON, DEFAULT_MIN_ON)): vol.All(vol.Coerce(int),vol.Range(min=0,max=3600)),
         vol.Required(CONF_MIN_OFF, default=old.get(CONF_MIN_OFF, DEFAULT_MIN_OFF)): vol.All(vol.Coerce(int),vol.Range(min=0,max=3600)),
+        vol.Required("flow_temperature_enabled", default=old.get("flow_temperature_enabled", False)): bool,
+        vol.Optional("flow_temperature_entity", description={"suggested_value": old.get("flow_temperature_entity")}): selector.EntitySelector(selector.EntitySelectorConfig(domain=["number"])),
         # Opt-in; existing installations keep their current boiler behaviour.
         vol.Required("low_demand_cutoff_enabled",
                      default=old.get("low_demand_cutoff_enabled", False)): bool,

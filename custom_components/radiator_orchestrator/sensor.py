@@ -22,6 +22,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         "peak_flow_c", "min_observed_burner_power_pct", "observed_flow_rise_c"
     ))
     entities.append(LowDemandStatusSensor(ctrl))
+    entities.append(FlowTemperatureStatusSensor(ctrl))
     entities.append(DiagnosticHistorySensor(ctrl))
     entities.append(WorkReturnPreheatStatusSensor(ctrl))
     entities.extend(CycleTelemetrySensor(ctrl, key) for key in CYCLE_FIELDS)
@@ -694,3 +695,24 @@ class EMSTextSensor(HeatFlowEntity, SensorEntity):
         return {"source_entity": self.ctrl.ems.sources.get(self.key),
                 "ems_monitoring_mode": "read_only",
                 "note": "Reported state only; not a controllable setting"}
+
+
+class FlowTemperatureStatusSensor(HeatFlowEntity, SensorEntity):
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, ctrl):
+        self.ctrl = ctrl
+        self._attr_unique_id = f"{ctrl.entry.entry_id}_flow_temperature_status"
+        self._attr_name = "Experimental CH Flow Temperature"
+
+    @property
+    def native_value(self):
+        return self.ctrl.flow_temperature.status
+
+    @property
+    def extra_state_attributes(self):
+        m = self.ctrl.flow_temperature
+        return {"requested_setpoint_c": m.requested, "actual_setpoint_c": m.actual,
+                "observed_flow_c": m.flow, "captured_baseline_c": m.baseline,
+                "owned_setting": bool(m.record), "fault": m.fault,
+                "selected_entity": self.ctrl.settings.get("flow_temperature_entity")}

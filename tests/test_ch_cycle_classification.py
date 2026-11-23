@@ -149,17 +149,17 @@ def test_dhw_charging_is_independent_evidence(house):
     ha.states.set("binary_sensor.boiler_burngas", "off")
     rec.sample(t0() + timedelta(seconds=20))
     assert rec.last["classification"] == "DHW"
-    assert rec.last["classification_reason"] == "DHW_charging_or_valve_signal_observed"
+    assert rec.last["classification_reason"] == "DHW_active_or_charging_signal_observed"
 
 
-def test_dhw_valve_is_independent_evidence(house):
+def test_dhw_valve_alone_is_not_charging(house):
     ha, rec = rig(house)
     ha.states.set("binary_sensor.boiler_dhw_3wayvalve", "on")
     ha.states.set("binary_sensor.boiler_burngas", "on")
     rec.sample(t0() + timedelta(seconds=5))
     ha.states.set("binary_sensor.boiler_burngas", "off")
     rec.sample(t0() + timedelta(seconds=20))
-    assert rec.last["classification"] == "DHW"
+    assert rec.last["classification"] == "uncertain_CH_DHW"
 
 
 def test_conflicting_dhw_counter_and_ch_activity_never_confirm_ch(house):
@@ -211,3 +211,32 @@ def test_performance_normalisation_uses_actual_request_time(house):
     assert p["heatflow_request_hours_since_reload"] > 0.2
     assert 10 < p["observed_CH_starts_per_demand_hour"] < 20
     assert p["low_demand_cutoff_suppression_events"] == 0
+
+
+def test_valve_only_during_confirmed_ch_preserves_ch_and_valve_diagnostic(house):
+    ha, rec = rig(house)
+    set_boiler_counters(ha)
+    rec.sample(t0() + timedelta(seconds=1))
+    ha.states.set('binary_sensor.boiler_heatingactive', 'on')
+    ha.states.set('binary_sensor.boiler_dhw_charging', 'off')
+    ha.states.set('binary_sensor.boiler_dhw_3wayvalve', 'on')
+    ha.states.set('binary_sensor.boiler_burngas', 'on')
+    rec.sample(t0() + timedelta(seconds=5))
+    ha.states.set('sensor.boiler_heatstarts', '101')
+    ha.states.set('binary_sensor.boiler_burngas', 'off')
+    rec.sample(t0() + timedelta(seconds=30))
+    assert rec.last['classification'] == 'CH'
+    assert rec.last['firing_evidence']['dhw_valve_on'] is True
+    assert rec.last['counter_deltas_during_cycle']['dhw_starts'] == 0
+
+
+def test_valve_does_not_mask_missing_independent_dhw_sources(house):
+    ha, rec = rig(house)
+    ha.states.set('binary_sensor.boiler_dhw_active', 'unavailable')
+    ha.states.set('binary_sensor.boiler_dhw_3wayvalve', 'off')
+    ha.states.set('binary_sensor.boiler_heatingactive', 'on')
+    ha.states.set('binary_sensor.boiler_burngas', 'on')
+    rec.sample(t0() + timedelta(seconds=5))
+    ha.states.set('binary_sensor.boiler_burngas', 'off')
+    rec.sample(t0() + timedelta(seconds=30))
+    assert rec.last['classification'] == 'uncertain_CH_DHW'
