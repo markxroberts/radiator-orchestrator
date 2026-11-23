@@ -2,7 +2,7 @@
 from __future__ import annotations
 import logging
 from datetime import timedelta
-from homeassistant.const import Platform
+from homeassistant.const import Platform, EVENT_HOMEASSISTANT_STOP
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
 from .const import DOMAIN, CONF_ROOMS, CONF_HEAT_SWITCH, CONF_HOT_WATER_SWITCH
 from .controller import HeatingController
@@ -17,6 +17,10 @@ async def async_setup_entry(hass, entry):
     controller = HeatingController(hass, entry, settings)
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = controller
     await controller.async_initialize()
+    async def restore_flow_on_stop(event):
+        await controller.flow_temperature.close()
+    entry.async_on_unload(hass.bus.async_listen_once(
+        EVENT_HOMEASSISTANT_STOP, restore_flow_on_stop))
     controller.ch_cycle_recorder = CHCycleRecorder(controller)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     watch = set()
@@ -63,6 +67,7 @@ async def async_unload_entry(hass, entry):
     if await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         controller = hass.data[DOMAIN].pop(entry.entry_id, None)
         if controller:
+            await controller.flow_temperature.close()
             await controller.async_flush_history()
         return True
     return False

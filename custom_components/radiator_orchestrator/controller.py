@@ -16,6 +16,7 @@ from .trv_compensation import read_trv_temperature, trv_boosted_setpoint
 from .dhw_logic import OccupancyHotWater
 from .ems_monitor import EMSMonitor
 from .low_demand import LowDemandGate
+from .flow_temperature import FlowTemperatureController
 from .cycle_monitor import cycle_source, binary_state
 from .demand_grace import retained_call_seconds
 from .linked_heating import morning_window, evening_window, preheat_allowance, preheat_authorisation
@@ -86,6 +87,7 @@ class HeatingController:
         self.settings = settings
         self.ems = EMSMonitor(settings)
         self.low_demand = LowDemandGate()
+        self.flow_temperature = FlowTemperatureController(self)
         self.low_demand_raw_request = False
         self.rooms = {x["name"]: Room(x, PID(x["kp"],x["ki"],x["kd"])) for x in settings.get(CONF_ROOMS,[]) if x.get("room_type") != "hot_water_only"}
         self.hot_water_rooms = [x for x in settings.get(CONF_ROOMS, []) if x.get("room_type") == "hot_water_only"]
@@ -136,6 +138,7 @@ class HeatingController:
         self.store = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}")
 
     async def async_initialize(self):
+        await self.flow_temperature.initialize()
         saved = await self.store.async_load() or {}
         history_data = await self.history_store.async_load() or {}
         self.history.extend(history_data.get("events", [])[-300:])
@@ -1273,7 +1276,15 @@ class HeatingController:
             else:
                 self.hot_water_relay_on = None
                 self.hot_water_reason = "no_hot_water_switch_configured"
-            # EMS is read-only and never contributes to any heating or DHW
+            try:
+                await self.flow_temperature.evaluate(now, protected=(
+                    self.preheating or holiday_return_active
+                    or self.morning_preheating or self.evening_preheating))
+            except Exception:
+                self.flow_temperature.fault = "controller_error"
+                self.flow_temperature.status = "controller_error"
+                _LOGGER.exception("Experimental flow temperature control suspended")
+            # EMS monitoring is read-only and never contributes to any heating or DHW
             # demand. Failures must never interrupt boiler control.
             try:
                 for transition in self.ems.sample(self.hass.states.get, now):

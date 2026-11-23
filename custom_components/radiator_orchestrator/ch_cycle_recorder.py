@@ -58,8 +58,7 @@ def classify_cycle(observed: dict, counter_changes: dict | None = None) -> tuple
     ch = observed.get("ch_on", False)
     dhw_primary = observed.get("dhw_on", False)
     dhw_charging = observed.get("dhw_charging_on", False)
-    dhw_valve = observed.get("dhw_valve_on", False)
-    dhw = dhw_primary or dhw_charging or dhw_valve
+    dhw = dhw_primary or dhw_charging
     ch_counter = ch_count is not None and ch_count > 0
     dhw_counter = dhw_count is not None and dhw_count > 0
     if ch and dhw:
@@ -71,7 +70,7 @@ def classify_cycle(observed: dict, counter_changes: dict | None = None) -> tuple
     if dhw:
         if observed.get("ch_unknown", False) and ch_count is None:
             return "uncertain_CH_DHW", "CH_signal_missing_during_DHW"
-        return "DHW", "DHW_charging_or_valve_signal_observed"
+        return "DHW", "DHW_active_or_charging_signal_observed"
     if dhw_counter:
         return "DHW", "DHW_start_counter_increment_despite_inactive_DHW_flag"
     if observed.get("dhw_unknown", False) and dhw_count is None:
@@ -202,7 +201,7 @@ class CHCycleRecorder:
         observed["dhw_valve_on"] |= sample["ems_dhw_valve"] == 1
         observed["dhw_unknown"] |= all(
             sample[key] is None for key in
-            ("ems_dhw", "ems_dhw_charging", "ems_dhw_valve")
+            ("ems_dhw", "ems_dhw_charging")
         )
         observed["samples"] += 1
 
