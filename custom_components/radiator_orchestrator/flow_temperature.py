@@ -35,6 +35,15 @@ class FlowTemperatureController:
         self.last_write = float('-inf')
         self.closed = False
         self.recovering = False
+        # HT3 selected-flow requests typically expire after ~60 seconds.
+        # Refresh the same safe target at most every 40 seconds, independent
+        # of the 10-minute target-CHANGE cooldown.
+        self.refresh_interval = 40
+        self.refresh_count = 0
+        self.expected_reversions = 0
+        self._observed_reversion = False
+        self.transient_mismatch_since = None
+        self.transient_mismatch_seconds = 180
 
     async def initialize(self):
         try:
@@ -119,9 +128,11 @@ class FlowTemperatureController:
             await self.clear()
             return True
         if all(abs(current-v) >= 0.01 for v in (r['selected'], r.get('previous', r['selected']))):
-            self.fault = 'external_change_relinquished'
-            await self.clear()
-            return True
+            # The Highflow can temporarily report 53/85C during DHW work.
+            # Don't overwrite or relinquish a known-safe baseline on a
+            # single anomalous reading, even if the DHW flags already fell.
+            self.status = 'restore_pending_transient_boiler_override'
+            return False
         # Persist attempted recovery to prevent restart retry loops.
         if r.get('restore_attempted'):
             self.status = 'restore_failed_manual_action_required'
@@ -165,16 +176,50 @@ class FlowTemperatureController:
                 self.candidate = None
                 self.status = 'selected_entity_invalid_or_unavailable'
                 return
-            if self.record and abs(self.actual-self.record['selected']) >= 0.01:
+            # Classify expected boiler behaviour before diagnosing an external
+            # controller. The 60-second return to our *captured baseline* is
+            # an HT3 command expiry, not a third-party edit. Other values
+            # (notably 53/85C during DHW) must be stable and unexplained for
+            # three minutes before ownership is relinquished. Never write
+            # while waiting for this distinction to resolve.
+            expected = (
+                self.record and any(abs(self.actual-v) < 0.01 for v in (
+                    self.record['selected'], self.baseline,
+                    self.record.get('previous', self.record['selected'])
+                ))
+            )
+            abnormal = (
+                (self.record is not None and not expected)
+                or (self.record is None and self.baseline is not None
+                    and abs(self.actual-self.baseline) >= 0.01)
+            )
+            if abnormal:
+                if self.transient_mismatch_since is None:
+                    self.transient_mismatch_since = now
+                if not self.safe_dhw():
+                    self.status = 'paused_transient_DHW_setpoint'
+                    return
+                if now-self.transient_mismatch_since < self.transient_mismatch_seconds:
+                    self.status = 'waiting_for_boiler_setpoint_to_stabilise'
+                    return
                 self.fault = 'external_change_relinquished'
-                await self.clear()
+                if self.record:
+                    await self.clear()
                 self.status = self.fault
                 return
-            if self.baseline is not None and not self.record and abs(self.actual-self.baseline) >= 0.01:
-                self.fault = 'external_change_relinquished'
-                self.status = self.fault
-                return
+            self.transient_mismatch_since = None
+            if (self.record and self.baseline is not None
+                    and self.record['selected'] < self.baseline
+                    and abs(self.actual-self.baseline) < 0.01):
+                if not self._observed_reversion:
+                    self.expected_reversions += 1
+                self._observed_reversion = True
+            else:
+                self._observed_reversion = False
             if self.baseline is None:
+                if not self.safe_dhw():
+                    self.status = 'paused_DHW_before_baseline_capture'
+                    return
                 self.baseline = self.actual
             if not 60 <= self.baseline <= 85:
                 self.status = 'baseline_outside_experimental_range'
@@ -201,7 +246,31 @@ class FlowTemperatureController:
                 await self.restore()
                 self.status = self.fault
                 return
+            if (self.record and target == self.record['selected']
+                    and target < self.baseline):
+                if now-self.last_write < self.refresh_interval:
+                    self.status = 'modulating_waiting_renewal'
+                    return
+                # Renewal is NOT a target change. Repeat even when readback
+                # still shows the target because the boiler command times out
+                # independently of Home Assistant's entity state.
+                self.last_write = now
+                if not await self.write(entity, target, self.actual):
+                    self.fault = 'renewal_or_readback_failed'
+                    self.record['write_uncertain'] = True
+                    await self.store.async_save(self.record)
+                    await self.restore()
+                    self.status = self.fault
+                    return
+                self.refresh_count += 1
+                self._observed_reversion = False
+                self.status = 'modulating_renewed'
+                return
             if abs(target-self.actual) < 0.01:
+                if target == self.baseline and self.record:
+                    # The boiler may already have expired our temporary
+                    # setting. Do not leave a stale ownership journal.
+                    await self.clear()
                 self.candidate = None
                 self.status = 'baseline' if target == self.baseline else 'modulating'
                 return

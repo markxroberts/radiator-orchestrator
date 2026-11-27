@@ -134,6 +134,10 @@ async def test_external_change_relinquishes_without_overwrite(rig):
     await reduce(m)
     selected(72)
     await m.evaluate(181)
+    assert m.status == 'waiting_for_boiler_setpoint_to_stabilise'
+    await m.evaluate(360)
+    assert m.fault is None
+    await m.evaluate(362)
     await m.close()
     assert ha.services.actions == [65]
     assert m.fault == 'external_change_relinquished'
@@ -232,3 +236,71 @@ async def test_late_write_after_timeout_remains_owned(rig):
     assert ha.services.actions == [75]
     assert m.record is None
     assert m.fault == 'write_or_readback_failed'
+
+
+@pytest.mark.asyncio
+async def test_reassert_flow_request_before_60_second_expiry(rig):
+    ha, _, _, m, _, _ = rig
+    await reduce(m)
+    assert ha.services.actions == [65]
+    await m.evaluate(219)
+    assert ha.services.actions == [65]
+    await m.evaluate(220)
+    assert ha.services.actions == [65, 65]
+    assert m.refresh_count == 1
+    assert m.fault is None
+
+
+@pytest.mark.asyncio
+async def test_expected_60_second_baseline_reversion_is_not_external_change(rig):
+    ha, _, _, m, _, selected = rig
+    await reduce(m)
+    selected(75)  # boiler's timed return, not user intervention
+    await m.evaluate(240)
+    assert ha.services.actions == [65, 65]
+    assert m.expected_reversions == 1
+    assert m.fault is None
+    assert m.status == 'modulating_renewed'
+
+
+@pytest.mark.asyncio
+async def test_dhw_transient_setpoint_does_not_latch_external_error(rig):
+    ha, _, _, m, _, selected = rig
+    await reduce(m)
+    ha.states.set('binary_sensor.boiler_dhw_charging', 'on')
+    selected(85)
+    await m.evaluate(220)
+    assert m.fault is None
+    assert ha.services.actions == [65]
+    ha.states.set('binary_sensor.boiler_dhw_charging', 'off')
+    await m.evaluate(241)
+    assert m.status == 'waiting_for_boiler_setpoint_to_stabilise'
+    selected(75)
+    await m.evaluate(260)
+    assert m.fault is None
+    assert ha.services.actions[-1] == 65
+
+
+@pytest.mark.asyncio
+async def test_dhw_startup_does_not_capture_85_as_baseline(rig):
+    ha, _, _, m, _, selected = rig
+    selected(85)
+    ha.states.set('binary_sensor.boiler_dhw_charging', 'on')
+    await m.evaluate(0)
+    assert m.baseline is None
+    assert m.status == 'paused_DHW_before_baseline_capture'
+    selected(75)
+    ha.states.set('binary_sensor.boiler_dhw_charging', 'off')
+    await m.evaluate(1)
+    assert m.baseline == 75
+
+
+@pytest.mark.asyncio
+async def test_expired_reduction_already_at_baseline_clears_journal(rig):
+    ha, _, ctrl, m, _, selected = rig
+    await reduce(m)
+    selected(75)
+    ctrl.boiler_requested = False
+    await m.evaluate(240)
+    assert m.record is None
+    assert ha.services.actions == [65]

@@ -23,6 +23,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     ))
     entities.append(LowDemandStatusSensor(ctrl))
     entities.append(FlowTemperatureStatusSensor(ctrl))
+    entities.append(SelectedBurnerPowerStatusSensor(ctrl))
     entities.append(DiagnosticHistorySensor(ctrl))
     entities.append(WorkReturnPreheatStatusSensor(ctrl))
     entities.extend(CycleTelemetrySensor(ctrl, key) for key in CYCLE_FIELDS)
@@ -697,6 +698,37 @@ class EMSTextSensor(HeatFlowEntity, SensorEntity):
                 "note": "Reported state only; not a controllable setting"}
 
 
+class SelectedBurnerPowerStatusSensor(HeatFlowEntity, SensorEntity):
+    """Read-only status of the optional five-minute HT3 command lease."""
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, ctrl):
+        self.ctrl = ctrl
+        self._attr_unique_id = f"{ctrl.entry.entry_id}_selected_burner_power_status"
+        self._attr_name = "Selected Burner Maximum Power Control"
+
+    @property
+    def native_value(self):
+        return self.ctrl.selected_burner_power.status
+
+    @property
+    def extra_state_attributes(self):
+        m = self.ctrl.selected_burner_power
+        return {
+            "enabled": bool(self.ctrl.settings.get("selected_burner_power_enabled", False)),
+            "selected_entity": self.ctrl.settings.get("selected_burner_power_entity"),
+            "configured_limit_pct": self.ctrl.settings.get("selected_burner_power_limit_pct", 90),
+            "baseline_pct": m.baseline,
+            "actual_pct": m.actual,
+            "target_pct": m.target,
+            "owned_setting": bool(m.record),
+            "renewal_interval_seconds": m.renew_interval,
+            "renewal_count_since_reload": m.renewal_count,
+            "expected_reversions_since_reload": m.expected_reversions,
+            "fault": m.fault,
+        }
+
+
 class FlowTemperatureStatusSensor(HeatFlowEntity, SensorEntity):
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -715,4 +747,8 @@ class FlowTemperatureStatusSensor(HeatFlowEntity, SensorEntity):
         return {"requested_setpoint_c": m.requested, "actual_setpoint_c": m.actual,
                 "observed_flow_c": m.flow, "captured_baseline_c": m.baseline,
                 "owned_setting": bool(m.record), "fault": m.fault,
+                "renewal_count_since_reload": m.refresh_count,
+                "expected_reversions_since_reload": m.expected_reversions,
+                "renewal_interval_seconds": m.refresh_interval,
+                "last_write_monotonic": m.last_write,
                 "selected_entity": self.ctrl.settings.get("flow_temperature_entity")}
