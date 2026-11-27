@@ -17,10 +17,11 @@ async def async_setup_entry(hass, entry):
     controller = HeatingController(hass, entry, settings)
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = controller
     await controller.async_initialize()
-    async def restore_flow_on_stop(event):
+    async def restore_ems_on_stop(event):
         await controller.flow_temperature.close()
+        await controller.selected_burner_power.close()
     entry.async_on_unload(hass.bus.async_listen_once(
-        EVENT_HOMEASSISTANT_STOP, restore_flow_on_stop))
+        EVENT_HOMEASSISTANT_STOP, restore_ems_on_stop))
     controller.ch_cycle_recorder = CHCycleRecorder(controller)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     watch = set()
@@ -54,8 +55,13 @@ async def async_setup_entry(hass, entry):
     entry.async_on_unload(cycle_unsub)
     unsub = async_track_state_change_event(hass, list(watch), controller.async_event) if watch else lambda: None
     timer = async_track_time_interval(hass, controller.async_tick, timedelta(seconds=60))
+    # HT3 flow command expires at ~60s; renew at <60s without running
+    # full room control on every 20s tick.
+    ems_timer = async_track_time_interval(
+        hass, controller.async_renew_ems_requests, timedelta(seconds=20))
     entry.async_on_unload(unsub)
     entry.async_on_unload(timer)
+    entry.async_on_unload(ems_timer)
     entry.async_on_unload(entry.add_update_listener(async_reload))
     await controller.async_evaluate()
     return True
@@ -68,6 +74,7 @@ async def async_unload_entry(hass, entry):
         controller = hass.data[DOMAIN].pop(entry.entry_id, None)
         if controller:
             await controller.flow_temperature.close()
+            await controller.selected_burner_power.close()
             await controller.async_flush_history()
         return True
     return False
