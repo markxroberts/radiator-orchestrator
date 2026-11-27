@@ -1,21 +1,23 @@
-# HeatFlow v0.7.20
+# HeatFlow v0.7.21 — renew temporary Worcester Bosch HT3/EMS-ESP commands
 
-## CH/DHW classification
+The Worcester Bosch Greenstar Highflow 440CDi ErP accepts selected CH flow-temperature commands, but its `selflowtemp` request **expires after approximately 60 seconds**. The selected maximum burner power (`selburnpow`, not actual modulation or `burnmaxpower`) may likewise revert after about **five minutes**. A one-time write cannot sustain either setting.
 
-Isolated DHW three-way-valve activity no longer proves DHW firing or turns a CH cycle into mixed_CH_DHW. Valve activity remains in `firing_evidence.dhw_valve_on` and start/end snapshots. Independent DHW-active/charging evidence and start counters retain their existing roles; missing independent signals and counter conflicts remain uncertain. Asynchronous counters can still lag a cycle; these are observations, not definitive hydraulic diagnoses.
+**Selected CH flow temperature (existing opt-in experiment)**
 
-## Experimental selected CH flow temperature
+- Renews an established, actively required 65°C/70°C CH target at most every **40 seconds**, on an independent 20-second maintenance check. Reassertion of the SAME target is distinct from reducing to a NEW target: the original 3-minute low-demand confirmation and 10-minute interval between reductions remain.
+- A return to the captured baseline (normally 75°C) after an earlier command is treated as an expected expiry, not a user intervention. Unexplained third-party values must persist at least 180 seconds outside known DHW activity before HeatFlow relinquishes control. DHW-related 53°C/85°C excursions pause adjustments rather than causing an immediate permanent fault.
+- No temperature command is sent while the DHW-active, charging or three-way-valve signals indicate DHW use or are unavailable. Baseline capture also waits for those signals to be safely OFF. Existing protections for CH demand, comfort, sensor loss, preheat and high observed flow remain in force.
+- Existing baseline-ownership journal and safe restore-on-disable/unload/restart protections are retained. An uncertain write latches a fault without unbounded retries. The diagnostic **Experimental CH Flow Temperature** now exposes successful renewals and expected setpoint reversions.
 
-Disabled by default. No entity is automatically selected. Existing heating, DHW, relay minimum-on/off and boiler protections are unchanged.
+**Selected maximum burner power (separate optional control)**
 
-After explicitly selecting the EMS-ESP selected CH temperature number, HeatFlow captures its current setting (normally 75°C) as the baseline. One or two calling **primary** radiators request 65°C; three or four request 70°C; five or more request the captured baseline. Targets never exceed the captured baseline. Secondary radiators are excluded from the count. This is room demand, not measured valve position or radiator output.
+- Under **HeatFlow → Configure → Boiler settings**, explicitly enable **Maintain selected maximum burner power during CH**, select **`number.boiler_selburnpow`** and set a target (default **90%**). **OFF by default:** upgrading does not modify burner power.
+- On a valid CH heating request with independent DHW signals known OFF, this requests the selected **maximum** burner power percentage, renewing at most every **240 seconds** (four minutes), faster than the observed five-minute expiry.
+- It does **not** command actual burner modulation, permanent `number.boiler_burnmaxpower`, pump mode, or DHW operation. It cannot override physical boiler safety systems and should be tested for room warm-up comfort.
+- During DHW it pauses; when CH ends, the option is disabled or HA unloads, it restores its captured initial setting when safe. A durable ownership journal allows conservative restoration on restart. An unexpected persistent third-party edit causes it to relinquish control rather than repeatedly overwrite the new value.
+- A new **Selected Burner Maximum Power Control** diagnostic sensor reports actual, target, captured baseline, renewal count, expected expiries and fault state.
 
-Reductions require three minutes of stable demand and at least ten minutes since the last write. Increases and fallback to baseline take priority. Holiday/work-return, morning/evening preheat and comfort holds, manual overrides, sensor loss/grace, deficits of at least 1°C, no demand and missing flow observations prevent reduction. At observed flow ≥85°C the experiment stops and attempts baseline restoration; this is not a boiler safety cutoff.
+**Experimental caution:** No live boiler commands were issued in preparing this update. Both controls require explicit enabling and correctly selected EMS-ESP entities. Use the independent readbacks and the CH Starts per HeatFlow Demand Hour sensor to judge whether cycling and room warm-up improve. In particular, lowering CH flow temperature may reduce radiator heat output and worsen low-load cycling.
 
-DHW-active, charging and valve signals must all be known OFF and HeatFlow must have no hot-water request before any write, including restoration. Unavailable selected entities, invalid bounds/step/units and failed readback prevent continuing modulation. Each write has a bounded acknowledgement wait, with no resend loop. External changes relinquish ownership. Persistent ownership records support restart recovery without adopting a reduced baseline. Disable, unload and clean shutdown restore the baseline only while still owned and safe; DHW/unavailability defer restoration until a later evaluation or restart. A failed restoration is not retried automatically, including across restart, and needs manual checking. A timed-out command retains its journal for possible late acknowledgement.
+Update through HACS to **v0.7.21** and restart Home Assistant to initialise the new lease-renewal timers.
 
-**Activation:** Install v0.7.20 through HACS, restart Home Assistant, then open HeatFlow → Configure → Boiler settings. Select `number.boiler_selflowtemp` only after confirming it is the EMS-ESP **selected central-heating flow temperature**, then enable experimental CH flow temperature modulation. Verify its current baseline first; a validated Celsius baseline between 60 and 85 is required. Do not select a DHW temperature, power limit or pump setting. No automatic activation occurs on upgrade.
-
-**Observe:** Experimental CH Flow Temperature exposes status, requested setpoint, actual readback, observed flow, captured baseline, ownership and fault separately. Compare with CH Starts per HeatFlow Demand Hour, confirmed CH durations/peaks and room comfort. Lower flow temperature can worsen cycling with too few emitters; no efficiency or cycling improvement is assumed. Disable the experiment if results worsen and verify baseline restoration. If a fault reports manual action, inspect the actual selected temperature and restore the recorded baseline manually when safe; do not repeatedly toggle/reload to force commands.
-
-239 isolated automated tests pass, plus compilation and JSON validation. No physical-boiler validation or live setting changes were performed during repository work.
