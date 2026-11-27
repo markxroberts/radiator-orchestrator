@@ -17,6 +17,7 @@ from .dhw_logic import OccupancyHotWater
 from .ems_monitor import EMSMonitor
 from .low_demand import LowDemandGate
 from .flow_temperature import FlowTemperatureController
+from .selected_burner_power import SelectedBurnerPowerController
 from .cycle_monitor import cycle_source, binary_state
 from .demand_grace import retained_call_seconds
 from .linked_heating import morning_window, evening_window, preheat_allowance, preheat_authorisation
@@ -88,6 +89,8 @@ class HeatingController:
         self.ems = EMSMonitor(settings)
         self.low_demand = LowDemandGate()
         self.flow_temperature = FlowTemperatureController(self)
+        self.selected_burner_power = SelectedBurnerPowerController(self)
+        self._last_flow_protected = True
         self.low_demand_raw_request = False
         self.rooms = {x["name"]: Room(x, PID(x["kp"],x["ki"],x["kd"])) for x in settings.get(CONF_ROOMS,[]) if x.get("room_type") != "hot_water_only"}
         self.hot_water_rooms = [x for x in settings.get(CONF_ROOMS, []) if x.get("room_type") == "hot_water_only"]
@@ -139,6 +142,7 @@ class HeatingController:
 
     async def async_initialize(self):
         await self.flow_temperature.initialize()
+        await self.selected_burner_power.initialize()
         saved = await self.store.async_load() or {}
         history_data = await self.history_store.async_load() or {}
         self.history.extend(history_data.get("events", [])[-300:])
@@ -301,6 +305,29 @@ class HeatingController:
 
     async def async_tick(self, _):
         await self.async_evaluate()
+
+    async def async_renew_ems_requests(self, _):
+        """Renew expiring HT3 requests without rerunning rooms/PID every 20s.
+
+        Serialized with the normal evaluation so a stale low-load flow
+        target cannot be renewed during an updated comfort/DHW decision.
+        """
+        async with self.lock:
+            now = time.monotonic()
+            try:
+                await self.flow_temperature.evaluate(
+                    now, protected=self._last_flow_protected)
+            except Exception:
+                self.flow_temperature.fault = "renewal_controller_error"
+                self.flow_temperature.status = "renewal_controller_error"
+                _LOGGER.exception("Flow command renewal suspended")
+            try:
+                await self.selected_burner_power.evaluate(now)
+            except Exception:
+                self.selected_burner_power.fault = "renewal_controller_error"
+                self.selected_burner_power.status = "renewal_controller_error"
+                _LOGGER.exception("Burner selected-power renewal suspended")
+            self.publish()
 
     async def set_mode(self, name, mode):
         self.rooms[name].mode = mode
@@ -1276,14 +1303,22 @@ class HeatingController:
             else:
                 self.hot_water_relay_on = None
                 self.hot_water_reason = "no_hot_water_switch_configured"
+            self._last_flow_protected = (
+                self.preheating or holiday_return_active
+                or self.morning_preheating or self.evening_preheating)
             try:
-                await self.flow_temperature.evaluate(now, protected=(
-                    self.preheating or holiday_return_active
-                    or self.morning_preheating or self.evening_preheating))
+                await self.flow_temperature.evaluate(
+                    now, protected=self._last_flow_protected)
             except Exception:
                 self.flow_temperature.fault = "controller_error"
                 self.flow_temperature.status = "controller_error"
                 _LOGGER.exception("Experimental flow temperature control suspended")
+            try:
+                await self.selected_burner_power.evaluate(now)
+            except Exception:
+                self.selected_burner_power.fault = "controller_error"
+                self.selected_burner_power.status = "controller_error"
+                _LOGGER.exception("Selected burner power control suspended")
             # EMS monitoring is read-only and never contributes to any heating or DHW
             # demand. Failures must never interrupt boiler control.
             try:
