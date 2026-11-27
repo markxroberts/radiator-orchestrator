@@ -160,6 +160,9 @@ class SelectedBurnerPowerController:
                 self.status = "selected_burner_power_entity_unavailable"
                 return
             if self.baseline is None:
+                if not self.safe_dhw():
+                    self.status = "paused_DHW_before_baseline_capture"
+                    return
                 self.baseline = self.actual
             if not 50 <= self.baseline <= 100:
                 self.status = "baseline_outside_safe_range"
