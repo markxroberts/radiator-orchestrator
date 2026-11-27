@@ -151,3 +151,18 @@ async def test_ch_limit_write_failure_no_unbounded_retry(rig):
         await m.evaluate(250*i)
     assert ha.services.actions==["failed"]
     assert m.fault=="write_or_readback_failed"
+
+
+@pytest.mark.asyncio
+async def test_power_baseline_not_captured_while_dhw_active(rig):
+    ha,_,_,m,selected=rig
+    ha.states.set("binary_sensor.boiler_dhw_charging","on")
+    selected(90)
+    await m.evaluate(0)
+    assert m.baseline is None
+    assert ha.services.actions==[]
+    selected(100)
+    ha.states.set("binary_sensor.boiler_dhw_charging","off")
+    await m.evaluate(20)
+    assert m.baseline==100
+    assert ha.services.actions==[90]
