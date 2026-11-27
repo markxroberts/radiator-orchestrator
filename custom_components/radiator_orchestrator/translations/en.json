@@ -17,7 +17,10 @@
           "low_demand_max_calling_rooms": "Maximum calling rooms for cutoff",
           "low_demand_max_burner_wait_seconds": "Maximum extra wait for an active CH burner to finish (seconds; 0 disables)",
           "flow_temperature_enabled": "Enable experimental CH flow temperature modulation (opt-in)",
-          "flow_temperature_entity": "Selected CH flow temperature number (EMS-ESP; explicitly select)"
+          "flow_temperature_entity": "Selected CH flow temperature number (EMS-ESP; explicitly select)",
+          "selected_burner_power_enabled": "Maintain selected maximum burner power during CH (off by default)",
+          "selected_burner_power_entity": "Selected burner MAX power number (select only number.boiler_selburnpow)",
+          "selected_burner_power_limit_pct": "Selected maximum burner power cap (%) during CH, default 90"
         }
       }
     }
@@ -112,7 +115,10 @@
           "low_demand_max_calling_rooms": "Maximum calling rooms for cutoff",
           "low_demand_max_burner_wait_seconds": "Maximum extra wait for an active CH burner to finish (seconds; 0 disables)",
           "flow_temperature_enabled": "Enable experimental CH flow temperature modulation (opt-in)",
-          "flow_temperature_entity": "Selected CH flow temperature number (EMS-ESP; explicitly select)"
+          "flow_temperature_entity": "Selected CH flow temperature number (EMS-ESP; explicitly select)",
+          "selected_burner_power_enabled": "Maintain selected maximum burner power during CH (off by default)",
+          "selected_burner_power_entity": "Selected burner MAX power number (select only number.boiler_selburnpow)",
+          "selected_burner_power_limit_pct": "Selected maximum burner power cap (%) during CH, default 90"
         },
         "description": "Optional low-demand cutoff is off by default. When enabled, it respects normal min-on/off limits and may briefly wait for a confirmed CH flame to finish before suppressing an otherwise negligible heating request; the wait is bounded and cannot override window, room-off or comfort safeguards. No EMS settings are changed."
       },
