@@ -217,6 +217,9 @@ class FlowTemperatureController:
             else:
                 self._observed_reversion = False
             if self.baseline is None:
+                if not self.safe_dhw():
+                    self.status = 'paused_DHW_before_baseline_capture'
+                    return
                 self.baseline = self.actual
             if not 60 <= self.baseline <= 85:
                 self.status = 'baseline_outside_experimental_range'
@@ -264,6 +267,10 @@ class FlowTemperatureController:
                 self.status = 'modulating_renewed'
                 return
             if abs(target-self.actual) < 0.01:
+                if target == self.baseline and self.record:
+                    # The boiler may already have expired our temporary
+                    # setting. Do not leave a stale ownership journal.
+                    await self.clear()
                 self.candidate = None
                 self.status = 'baseline' if target == self.baseline else 'modulating'
                 return
