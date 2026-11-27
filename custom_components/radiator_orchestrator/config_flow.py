@@ -18,6 +18,16 @@ def central_schema(existing: dict | None = None):
         vol.Required(CONF_MIN_OFF, default=old.get(CONF_MIN_OFF, DEFAULT_MIN_OFF)): vol.All(vol.Coerce(int),vol.Range(min=0,max=3600)),
         vol.Required("flow_temperature_enabled", default=old.get("flow_temperature_enabled", False)): bool,
         vol.Optional("flow_temperature_entity", description={"suggested_value": old.get("flow_temperature_entity")}): selector.EntitySelector(selector.EntitySelectorConfig(domain=["number"])),
+        # Selected Burner MAX Power (not current burner modulation), HT3
+        # command expires after about five minutes. Opt-in and CH-only.
+        vol.Required("selected_burner_power_enabled",
+                     default=old.get("selected_burner_power_enabled", False)): bool,
+        vol.Optional("selected_burner_power_entity",
+                     description={"suggested_value": old.get("selected_burner_power_entity")}):
+            selector.EntitySelector(selector.EntitySelectorConfig(domain=["number"])),
+        vol.Required("selected_burner_power_limit_pct",
+                     default=old.get("selected_burner_power_limit_pct", 90)):
+            vol.All(vol.Coerce(int), vol.Range(min=50, max=100)),
         # Opt-in; existing installations keep their current boiler behaviour.
         vol.Required("low_demand_cutoff_enabled",
                      default=old.get("low_demand_cutoff_enabled", False)): bool,
